@@ -21,8 +21,9 @@ ifdef ENABLE_V8_TAP
   TAP_V8_BENCHMARKS := --junitout v8-benchmarks-tap.xml
 endif
 
+V8_TEST_OPTIONS = $(V8_EXTRA_TEST_OPTIONS)
 ifdef DISABLE_V8_I18N
-  V8_TEST_NO_I18N := --noi18n
+  V8_TEST_OPTIONS += --noi18n
   V8_BUILD_OPTIONS += i18nsupport=off
 endif
 
@@ -143,7 +144,7 @@ test/addons/.buildstamp: $(ADDONS_BINDING_GYPS) | test/addons/.docbuildstamp
 	for dirname in test/addons/*/; do \
 		$(NODE) deps/npm/node_modules/node-gyp/bin/node-gyp rebuild \
 			--directory="$$PWD/$$dirname" \
-			--nodedir="$$PWD"; \
+			--nodedir="$$PWD" || exit 1 ; \
 	done
 	touch $@
 
@@ -191,6 +192,9 @@ test-internet: all
 test-debugger: all
 	$(PYTHON) tools/test.py debugger
 
+test-known-issues: all
+	$(PYTHON) tools/test.py known_issues --expect-fail
+
 test-npm: $(NODE_EXE)
 	NODE=$(NODE) tools/test-npm.sh
 
@@ -207,10 +211,12 @@ test-timers:
 test-timers-clean:
 	$(MAKE) --directory=tools clean
 
+
+ifneq ("","$(wildcard deps/v8/tools/run-tests.py)")
 test-v8:
 	# note: performs full test unless QUICKCHECK is specified
 	deps/v8/tools/run-tests.py --arch=$(V8_ARCH) \
-        --mode=$(BUILDTYPE_LOWER) $(V8_TEST_NO_I18N) $(QUICKCHECK_ARG) \
+        --mode=$(BUILDTYPE_LOWER) $(V8_TEST_OPTIONS) $(QUICKCHECK_ARG) \
         --no-presubmit \
         --shell-dir=$(PWD)/deps/v8/out/$(V8_ARCH).$(BUILDTYPE_LOWER) \
 	 $(TAP_V8)
@@ -230,6 +236,12 @@ test-v8-benchmarks:
 
 test-v8-all: test-v8 test-v8-intl test-v8-benchmarks
 	# runs all v8 tests
+else
+test-v8 test-v8-intl test-v8-benchmarks test-v8-all:
+	@echo "Testing v8 is not available through the source tarball."
+	@echo "Use the git repo instead:" \
+		"$ git clone https://github.com/nodejs/node.git"
+endif
 
 apidoc_sources = $(wildcard doc/api/*.markdown)
 apidocs = $(addprefix out/,$(apidoc_sources:.markdown=.html)) \
@@ -328,7 +340,15 @@ else
 ifeq ($(DESTCPU),ppc)
 ARCH=ppc
 else
+ifeq ($(DESTCPU),s390)
+ARCH=s390
+else
+ifeq ($(DESTCPU),s390x)
+ARCH=s390x
+else
 ARCH=x86
+endif
+endif
 endif
 endif
 endif
@@ -423,11 +443,15 @@ $(TARBALL): release-only $(NODE_EXE) doc
 	mkdir -p $(TARNAME)/doc/api
 	cp doc/node.1 $(TARNAME)/doc/node.1
 	cp -r out/doc/api/* $(TARNAME)/doc/api/
-	rm -rf $(TARNAME)/deps/v8/{test,samples,tools/profviz} # too big
+	rm -rf $(TARNAME)/deps/v8/{test,samples,tools/profviz,tools/run-tests.py}
 	rm -rf $(TARNAME)/doc/images # too big
 	rm -rf $(TARNAME)/deps/uv/{docs,samples,test}
-	rm -rf $(TARNAME)/deps/openssl/{doc,demos,test}
+	rm -rf $(TARNAME)/deps/openssl/openssl/{doc,demos,test}
 	rm -rf $(TARNAME)/deps/zlib/contrib # too big, unused
+	rm -rf $(TARNAME)/.{editorconfig,git*,mailmap}
+	rm -rf $(TARNAME)/tools/{eslint,eslint-rules,osx-pkg.pmdoc,pkgsrc}
+	rm -rf $(TARNAME)/tools/{osx-*,license-builder.sh,cpplint.py}
+	find $(TARNAME)/ -name ".eslint*" -maxdepth 2 | xargs rm
 	find $(TARNAME)/ -type l | xargs rm # annoying on windows
 	tar -cf $(TARNAME).tar $(TARNAME)
 	rm -rf $(TARNAME)
@@ -568,6 +592,8 @@ bench-all: bench bench-misc bench-array bench-buffer bench-url bench-events benc
 
 bench: bench-net bench-http bench-fs bench-tls
 
+bench-ci: bench
+
 bench-http-simple:
 	benchmark/http_simple_bench.sh
 
@@ -577,8 +603,8 @@ bench-idle:
 	$(NODE) benchmark/idle_clients.js &
 
 jslint:
-	$(NODE) tools/eslint/bin/eslint.js lib src test tools/doc tools/eslint-rules \
-		--rulesdir tools/eslint-rules --quiet
+	$(NODE) tools/eslint/bin/eslint.js benchmark lib src test tools/doc \
+		tools/eslint-rules --rulesdir tools/eslint-rules
 
 CPPLINT_EXCLUDE ?=
 CPPLINT_EXCLUDE += src/node_lttng.cc
@@ -605,7 +631,16 @@ CPPLINT_FILES = $(filter-out $(CPPLINT_EXCLUDE), $(wildcard \
 cpplint:
 	@$(PYTHON) tools/cpplint.py $(CPPLINT_FILES)
 
+ifneq ("","$(wildcard tools/eslint/bin/eslint.js)")
 lint: jslint cpplint
+else
+lint:
+	@echo "Linting is not available through the source tarball."
+	@echo "Use the git repo instead:" \
+		"$ git clone https://github.com/nodejs/node.git"
+endif
+
+lint-ci: lint
 
 .PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean \
 	check uninstall install install-includes install-bin all staticlib \
@@ -613,4 +648,4 @@ lint: jslint cpplint
 	blog blogclean tar binary release-only bench-http-simple bench-idle \
 	bench-all bench bench-misc bench-array bench-buffer bench-net \
 	bench-http bench-fs bench-tls cctest run-ci test-v8 test-v8-intl \
-	test-v8-benchmarks test-v8-all v8
+	test-v8-benchmarks test-v8-all v8 lint-ci bench-ci

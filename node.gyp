@@ -5,7 +5,7 @@
     'node_use_lttng%': 'false',
     'node_use_etw%': 'false',
     'node_use_perfctr%': 'false',
-    'node_has_winsdk%': 'false',
+    'node_no_browser_globals%': 'false',
     'node_shared_zlib%': 'false',
     'node_shared_http_parser%': 'false',
     'node_shared_libuv%': 'false',
@@ -16,7 +16,7 @@
     'node_target_type%': 'executable',
     'node_core_target_name%': 'node',
     'library_files': [
-      'src/node.js',
+      'lib/internal/bootstrap_node.js',
       'lib/_debug_agent.js',
       'lib/_debugger.js',
       'lib/assert.js',
@@ -75,6 +75,11 @@
       'lib/internal/linkedlist.js',
       'lib/internal/net.js',
       'lib/internal/module.js',
+      'lib/internal/process/next_tick.js',
+      'lib/internal/process/promises.js',
+      'lib/internal/process/stdio.js',
+      'lib/internal/process/warning.js',
+      'lib/internal/process.js',
       'lib/internal/readline.js',
       'lib/internal/repl.js',
       'lib/internal/socket_list.js',
@@ -362,6 +367,9 @@
             'tools/msvs/genfiles/node_perfctr_provider.rc',
           ]
         } ],
+        [ 'node_no_browser_globals=="true"', {
+          'defines': [ 'NODE_NO_BROWSER_GLOBALS' ],
+        } ],
         [ 'v8_postmortem_support=="true"', {
           'dependencies': [ 'deps/v8/tools/gyp/v8.gyp:postmortem-metadata' ],
           'conditions': [
@@ -462,7 +470,7 @@
       'target_name': 'node_etw',
       'type': 'none',
       'conditions': [
-        [ 'node_use_etw=="true" and node_has_winsdk=="true"', {
+        [ 'node_use_etw=="true"', {
           'actions': [
             {
               'action_name': 'node_etw',
@@ -483,7 +491,7 @@
       'target_name': 'node_perfctr',
       'type': 'none',
       'conditions': [
-        [ 'node_use_perfctr=="true" and node_has_winsdk=="true"', {
+        [ 'node_use_perfctr=="true"', {
           'actions': [
             {
               'action_name': 'node_perfctr_man',

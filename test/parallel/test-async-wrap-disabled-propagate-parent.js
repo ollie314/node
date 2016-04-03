@@ -6,17 +6,24 @@ const net = require('net');
 const async_wrap = process.binding('async_wrap');
 const providers = Object.keys(async_wrap.Providers);
 
+const uidSymbol = Symbol('uid');
+
 let cntr = 0;
 let server;
 let client;
 
-function init(type, id, parent) {
-  if (parent) {
+function init(uid, type, parentUid, parentHandle) {
+  this[uidSymbol] = uid;
+
+  if (parentHandle) {
     cntr++;
     // Cannot assert in init callback or will abort.
     process.nextTick(() => {
       assert.equal(providers[type], 'TCPWRAP');
-      assert.equal(parent, server._handle, 'server doesn\'t match parent');
+      assert.equal(parentUid, server._handle[uidSymbol],
+                   'server uid doesn\'t match parent uid');
+      assert.equal(parentHandle, server._handle,
+                   'server handle doesn\'t match parent handle');
       assert.equal(this, client._handle, 'client doesn\'t match context');
     });
   }
@@ -24,7 +31,7 @@ function init(type, id, parent) {
 
 function noop() { }
 
-async_wrap.setupHooks(init, noop, noop);
+async_wrap.setupHooks({ init });
 async_wrap.enable();
 
 server = net.createServer(function(c) {

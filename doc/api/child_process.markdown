@@ -32,7 +32,7 @@ mean that data sent to the child process may not be immediately consumed.*
 The `child_process.spawn()` method spawns the child process asynchronously,
 without blocking the Node.js event loop. The `child_process.spawnSync()`
 function provides equivalent functionality in a synchronous manner that blocks
-the event loop until the spawned process either exits of is terminated.
+the event loop until the spawned process either exits or is terminated.
 
 For convenience, the `child_process` module provides a handful of synchronous
 and asynchronous alternatives to [`child_process.spawn()`][] and
@@ -131,8 +131,8 @@ exec('my.bat', (err, stdout, stderr) => {
   * `gid` {Number} Sets the group identity of the process. (See setgid(2).)
 * `callback` {Function} called with the output when process terminates
   * `error` {Error}
-  * `stdout` {Buffer}
-  * `stderr` {Buffer}
+  * `stdout` {String|Buffer}
+  * `stderr` {String|Buffer}
 * Return: {ChildProcess}
 
 Spawns a shell then executes the `command` within that shell, buffering any
@@ -156,6 +156,13 @@ If a `callback` function is provided, it is called with the arguments
 the exit code of the child process while `error.signal` will be set to the
 signal that terminated the process. Any exit code other than `0` is considered
 to be an error.
+
+The `stdout` and `stderr` arguments passed to the callback will contain the
+stdout and stderr output of the child process. By default, Node.js will decode
+the output as UTF-8 and pass strings to the callback. The `encoding` option
+can be used to specify the character encoding used to decode the stdout and 
+stderr output. If `encoding` is `'buffer'`, `Buffer` objects will be passed to 
+the callback instead.
 
 The `options` argument may be passed as the second argument to customize how
 the process is spawned. The default options are:
@@ -184,7 +191,7 @@ replace the existing process and uses a shell to execute the command.*
 
 ### child_process.execFile(file[, args][, options][, callback])
 
-* `file` {String} A path to an executable file
+* `file` {String} The name or path of the executable file to run
 * `args` {Array} List of string arguments
 * `options` {Object}
   * `cwd` {String} Current working directory of the child process
@@ -198,8 +205,8 @@ replace the existing process and uses a shell to execute the command.*
   * `gid` {Number} Sets the group identity of the process. (See setgid(2).)
 * `callback` {Function} called with the output when process terminates
   * `error` {Error}
-  * `stdout` {Buffer}
-  * `stderr` {Buffer}
+  * `stdout` {String|Buffer}
+  * `stderr` {String|Buffer}
 * Return: {ChildProcess}
 
 The `child_process.execFile()` function is similar to [`child_process.exec()`][]
@@ -219,6 +226,13 @@ const child = execFile('node', ['--version'], (error, stdout, stderr) => {
   console.log(stdout);
 });
 ```
+
+The `stdout` and `stderr` arguments passed to the callback will contain the
+stdout and stderr output of the child process. By default, Node.js will decode
+the output as UTF-8 and pass strings to the callback. The `encoding` option
+can be used to specify the character encoding used to decode the stdout and
+stderr output. If `encoding` is `'buffer'`, `Buffer` objects will be passed to
+the callback instead.
 
 ### child_process.fork(modulePath[, args][, options])
 
@@ -391,8 +405,27 @@ Doing so will cause the parent's event loop to not include the child in its
 reference count, allowing the parent to exit independently of the child, unless
 there is an established IPC channel between the child and parent.
 
-Example of detaching a long-running process and redirecting its output to a
-file:
+When using the `detached` option to start a long-running process, the process
+will not stay running in the background after the parent exits unless it is
+provided with a `stdio` configuration that is not connected to the parent.
+If the parent's `stdio` is inherited, the child will remain attached to the
+controlling terminal.
+
+Example of a long-running process, by detaching and also ignoring its parent
+`stdio` file descriptors, in order to ignore the parent's termination:
+
+```js
+const spawn = require('child_process').spawn;
+
+const child = spawn(process.argv[0], ['child_program.js'], {
+  detached: true,
+  stdio: ['ignore']
+});
+
+child.unref();
+```
+
+Alternatively one can redirect the child process' output into files:
 
 ```js
 const fs = require('fs');
@@ -407,12 +440,6 @@ const child = spawn('prg', [], {
 
 child.unref();
 ```
-
-When using the `detached` option to start a long-running process, the process
-will not stay running in the background after the parent exits unless it is
-provided with a `stdio` configuration that is not connected to the parent.
-If the parent's `stdio` is inherited, the child will remain attached to the
-controlling terminal.
 
 #### options.stdio
 
@@ -502,7 +529,7 @@ configuration at startup.
 
 ### child_process.execFileSync(file[, args][, options])
 
-* `file` {String} The filename of the program to run
+* `file` {String} The name or path of the executable file to run
 * `args` {Array} List of string arguments
 * `options` {Object}
   * `cwd` {String} Current working directory of the child process
@@ -750,10 +777,11 @@ console.log(`Spawned child pid: ${grep.pid}`);
 grep.stdin.end();
 ```
 
-### child.send(message[, sendHandle][, callback])
+### child.send(message[, sendHandle[, options]][, callback])
 
 * `message` {Object}
 * `sendHandle` {Handle}
+* `options` {Object}
 * `callback` {Function}
 * Return: {Boolean}
 
@@ -801,6 +829,14 @@ passing a TCP server or socket object to the child process. The child will
 receive the object as the second argument passed to the callback function
 registered on the `process.on('message')` event.
 
+The `options` argument, if present, is an object used to parameterize the
+sending of certain types of handles. `options` supports the following
+properties:
+
+  * `keepOpen` - A Boolean value that can be used when passing instances of
+    `net.Socket`. When `true`, the socket is kept open in the sending process.
+    Defaults to `false`.
+
 The optional `callback` is a function that is invoked after the message is
 sent but before the child may have received it.  The function is called with a
 single argument: `null` on success, or an [`Error`][] object on failure.
@@ -817,7 +853,7 @@ used to implement flow control.
 #### Example: sending a server object
 
 The `sendHandle` argument can be used, for instance, to pass the handle of
-a TSCP server object to the child process as illustrated in the example below:
+a TCP server object to the child process as illustrated in the example below:
 
 ```js
 const child = require('child_process').fork('child.js');
@@ -892,6 +928,8 @@ Once a socket has been passed to a child, the parent is no longer capable of
 tracking when the socket is destroyed. To indicate this, the `.connections`
 property becomes `null`. It is recommended not to use `.maxConnections` when
 this occurs.
+
+*Note: this function uses [`JSON.stringify()`][] internally to serialize the `message`.*
 
 ### child.stderr
 
@@ -987,3 +1025,4 @@ to the same value.
 [`options.stdio`]: #child_process_options_stdio
 [`stdio`]: #child_process_options_stdio
 [synchronous counterparts]: #child_process_synchronous_process_creation
+[`JSON.stringify()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify

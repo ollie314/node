@@ -41,6 +41,8 @@ enum node_zlib_mode {
   UNZIP
 };
 
+#define GZIP_HEADER_ID1 0x1f
+#define GZIP_HEADER_ID2 0x8b
 
 void InitZlib(v8::Local<v8::Object> target);
 
@@ -253,6 +255,19 @@ class ZCtx : public AsyncWrap {
             // input.
             ctx->err_ = Z_NEED_DICT;
           }
+        }
+
+        while (ctx->strm_.avail_in > 0 &&
+               ctx->mode_ == GUNZIP &&
+               ctx->err_ == Z_STREAM_END &&
+               ctx->strm_.next_in[0] != 0x00) {
+          // Bytes remain in input buffer. Perhaps this is another compressed
+          // member in the same archive, or just trailing garbage.
+          // Trailing zero bytes are okay, though, since they are frequently
+          // used for padding.
+
+          Reset(ctx);
+          ctx->err_ = inflate(&ctx->strm_, ctx->flush_);
         }
         break;
       default:
@@ -524,10 +539,12 @@ class ZCtx : public AsyncWrap {
     switch (ctx->mode_) {
       case DEFLATE:
       case DEFLATERAW:
+      case GZIP:
         ctx->err_ = deflateReset(&ctx->strm_);
         break;
       case INFLATE:
       case INFLATERAW:
+      case GUNZIP:
         ctx->err_ = inflateReset(&ctx->strm_);
         break;
       default:

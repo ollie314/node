@@ -50,7 +50,8 @@ namespace node {
 #define PER_ISOLATE_PRIVATE_SYMBOL_PROPERTIES(V)                              \
   V(alpn_buffer_private_symbol, "node:alpnBuffer")                            \
   V(arrow_message_private_symbol, "node:arrowMessage")                        \
-  V(contextify_private_symbol, "node:contextify")                             \
+  V(contextify_context_private_symbol, "node:contextify:context")             \
+  V(contextify_global_private_symbol, "node:contextify:global")               \
   V(decorated_private_symbol, "node:decorated")                               \
   V(npn_buffer_private_symbol, "node:npnBuffer")                              \
   V(processed_private_symbol, "node:processed")                               \
@@ -72,6 +73,7 @@ namespace node {
   V(bytes_string, "bytes")                                                    \
   V(bytes_parsed_string, "bytesParsed")                                       \
   V(cached_data_string, "cachedData")                                         \
+  V(cached_data_produced_string, "cachedDataProduced")                        \
   V(cached_data_rejected_string, "cachedDataRejected")                        \
   V(callback_string, "callback")                                              \
   V(change_string, "change")                                                  \
@@ -472,8 +474,6 @@ class Environment {
   inline void set_trace_sync_io(bool value);
 
   inline int64_t get_async_wrap_uid();
-
-  bool KickNextTick(AsyncCallbackScope* scope);
 
   inline uint32_t* heap_statistics_buffer() const;
   inline void set_heap_statistics_buffer(uint32_t* pointer);

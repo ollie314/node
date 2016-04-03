@@ -115,13 +115,17 @@ using v8::Integer;
 using v8::Isolate;
 using v8::Local;
 using v8::Locker;
+using v8::MaybeLocal;
 using v8::Message;
+using v8::Name;
+using v8::Null;
 using v8::Number;
 using v8::Object;
 using v8::ObjectTemplate;
 using v8::Promise;
 using v8::PromiseRejectMessage;
 using v8::PropertyCallbackInfo;
+using v8::ScriptOrigin;
 using v8::SealHandleScope;
 using v8::StackFrame;
 using v8::StackTrace;
@@ -145,6 +149,8 @@ static const char** preload_modules = nullptr;
 static bool use_debug_agent = false;
 static bool debug_wait_connect = false;
 static int debug_port = 5858;
+static const int v8_default_thread_pool_size = 4;
+static int v8_thread_pool_size = v8_default_thread_pool_size;
 static bool prof_process = false;
 static bool v8_is_profiling = false;
 static bool node_is_initialized = false;
@@ -161,6 +167,16 @@ static const char* icu_data_dir = nullptr;
 // used by C++ modules as well
 bool no_deprecation = false;
 
+#if HAVE_OPENSSL && NODE_FIPS_MODE
+// used by crypto module
+bool enable_fips_crypto = false;
+bool force_fips_crypto = false;
+#endif
+
+// true if process warnings should be suppressed
+bool no_process_warnings = false;
+bool trace_warnings = false;
+
 // process-relative uptime base, initialized at start-up
 static double prog_start_time;
 static bool debugger_running;
@@ -168,7 +184,6 @@ static uv_async_t dispatch_debug_messages_async;
 
 static node::atomic<Isolate*> node_isolate;
 static v8::Platform* default_platform;
-
 
 static void PrintErrorString(const char* format, ...) {
   va_list ap;
@@ -946,7 +961,9 @@ Local<Value> WinapiErrnoException(Isolate* isolate,
 
 
 void* ArrayBufferAllocator::Allocate(size_t size) {
-  if (env_ == nullptr || !env_->array_buffer_allocator_info()->no_zero_fill())
+  if (env_ == nullptr ||
+      !env_->array_buffer_allocator_info()->no_zero_fill() ||
+      zero_fill_all_buffers)
     return calloc(size, 1);
   env_->array_buffer_allocator_info()->reset_fill_flag();
   return malloc(size);
@@ -1043,7 +1060,8 @@ void SetupDomainUse(const FunctionCallbackInfo<Value>& args) {
 
   // Do a little housekeeping.
   env->process_object()->Delete(
-      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupDomainUse"));
+      env->context(),
+      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupDomainUse")).FromJust();
 
   uint32_t* const fields = env->domain_flag()->fields();
   uint32_t const fields_count = env->domain_flag()->fields_count();
@@ -1066,7 +1084,8 @@ void SetupProcessObject(const FunctionCallbackInfo<Value>& args) {
 
   env->set_push_values_to_array_function(args[0].As<Function>());
   env->process_object()->Delete(
-      FIXED_ONE_BYTE_STRING(env->isolate(), "_setupProcessObject"));
+      env->context(),
+      FIXED_ONE_BYTE_STRING(env->isolate(), "_setupProcessObject")).FromJust();
 }
 
 
@@ -1082,7 +1101,8 @@ void SetupNextTick(const FunctionCallbackInfo<Value>& args) {
 
   // Do a little housekeeping.
   env->process_object()->Delete(
-      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupNextTick"));
+      env->context(),
+      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupNextTick")).FromJust();
 
   // Values use to cross communicate with processNextTick.
   uint32_t* const fields = env->tick_info()->fields();
@@ -1122,7 +1142,8 @@ void SetupPromises(const FunctionCallbackInfo<Value>& args) {
   env->set_promise_reject_function(args[0].As<Function>());
 
   env->process_object()->Delete(
-      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupPromises"));
+      env->context(),
+      FIXED_ONE_BYTE_STRING(args.GetIsolate(), "_setupPromises")).FromJust();
 }
 
 
@@ -1173,19 +1194,38 @@ Local<Value> MakeCallback(Environment* env,
   }
 
   if (ran_init_callback && !pre_fn.IsEmpty()) {
-    if (pre_fn->Call(object, 0, nullptr).IsEmpty())
-      FatalError("node::MakeCallback", "pre hook threw");
+    TryCatch try_catch(env->isolate());
+    MaybeLocal<Value> ar = pre_fn->Call(env->context(), object, 0, nullptr);
+    if (ar.IsEmpty()) {
+      ClearFatalExceptionHandlers(env);
+      FatalException(env->isolate(), try_catch);
+      return Local<Value>();
+    }
   }
 
   Local<Value> ret = callback->Call(recv, argc, argv);
 
   if (ran_init_callback && !post_fn.IsEmpty()) {
-    if (post_fn->Call(object, 0, nullptr).IsEmpty())
-      FatalError("node::MakeCallback", "post hook threw");
+    Local<Value> did_throw = Boolean::New(env->isolate(), ret.IsEmpty());
+    // Currently there's no way to retrieve an uid from node::MakeCallback().
+    // This needs to be fixed.
+    Local<Value> vals[] =
+        { Undefined(env->isolate()).As<Value>(), did_throw };
+    TryCatch try_catch(env->isolate());
+    MaybeLocal<Value> ar =
+        post_fn->Call(env->context(), object, ARRAY_SIZE(vals), vals);
+    if (ar.IsEmpty()) {
+      ClearFatalExceptionHandlers(env);
+      FatalException(env->isolate(), try_catch);
+      return Local<Value>();
+    }
   }
 
   if (ret.IsEmpty()) {
-    return Undefined(env->isolate());
+    // NOTE: For backwards compatibility with public API we return Undefined()
+    // if the top level call threw.
+    return callback_scope.in_makecallback() ?
+        ret : Undefined(env->isolate()).As<Value>();
   }
 
   if (has_domain) {
@@ -1198,7 +1238,23 @@ Local<Value> MakeCallback(Environment* env,
     }
   }
 
-  if (!env->KickNextTick(&callback_scope)) {
+  if (callback_scope.in_makecallback()) {
+    return ret;
+  }
+
+  Environment::TickInfo* tick_info = env->tick_info();
+
+  if (tick_info->length() == 0) {
+    env->isolate()->RunMicrotasks();
+  }
+
+  Local<Object> process = env->process_object();
+
+  if (tick_info->length() == 0) {
+    tick_info->set_index(0);
+  }
+
+  if (env->tick_callback_function()->Call(process, 0, nullptr).IsEmpty()) {
     return Undefined(env->isolate());
   }
 
@@ -1458,8 +1514,8 @@ void AppendExceptionLine(Environment* env,
   // sourceline to 78 characters, and we end up not providing very much
   // useful debugging info to the user if we remove 62 characters.
 
-  int start = message->GetStartColumn();
-  int end = message->GetEndColumn();
+  int start = message->GetStartColumn(env->context()).FromJust();
+  int end = message->GetEndColumn(env->context()).FromJust();
 
   char arrow[1024];
   int max_off = sizeof(arrow) - 2;
@@ -1598,19 +1654,21 @@ static Local<Value> ExecuteString(Environment* env,
                                   Local<String> source,
                                   Local<String> filename) {
   EscapableHandleScope scope(env->isolate());
-  TryCatch try_catch;
+  TryCatch try_catch(env->isolate());
 
   // try_catch must be nonverbose to disable FatalException() handler,
   // we will handle exceptions ourself.
   try_catch.SetVerbose(false);
 
-  Local<v8::Script> script = v8::Script::Compile(source, filename);
+  ScriptOrigin origin(filename);
+  MaybeLocal<v8::Script> script =
+      v8::Script::Compile(env->context(), source, &origin);
   if (script.IsEmpty()) {
     ReportException(env, try_catch);
     exit(3);
   }
 
-  Local<Value> result = script->Run();
+  Local<Value> result = script.ToLocalChecked()->Run();
   if (result.IsEmpty()) {
     ReportException(env, try_catch);
     exit(4);
@@ -2321,7 +2379,7 @@ void FatalException(Isolate* isolate,
     exit(6);
   }
 
-  TryCatch fatal_try_catch;
+  TryCatch fatal_try_catch(isolate);
 
   // Do not call FatalException when _fatalException handler throws
   fatal_try_catch.SetVerbose(false);
@@ -2358,6 +2416,25 @@ void OnMessage(Local<Message> message, Local<Value> error) {
 }
 
 
+void ClearFatalExceptionHandlers(Environment* env) {
+  Local<Object> process = env->process_object();
+  Local<Value> events =
+      process->Get(env->context(), env->events_string()).ToLocalChecked();
+
+  if (events->IsObject()) {
+    events.As<Object>()->Set(
+        env->context(),
+        OneByteString(env->isolate(), "uncaughtException"),
+        Undefined(env->isolate())).FromJust();
+  }
+
+  process->Set(
+      env->context(),
+      env->domain_string(),
+      Undefined(env->isolate())).FromJust();
+}
+
+
 static void Binding(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
@@ -2367,7 +2444,7 @@ static void Binding(const FunctionCallbackInfo<Value>& args) {
   Local<Object> cache = env->binding_cache_object();
   Local<Object> exports;
 
-  if (cache->Has(module)) {
+  if (cache->Has(env->context(), module).FromJust()) {
     exports = cache->Get(module)->ToObject(env->isolate());
     args.GetReturnValue().Set(exports);
     return;
@@ -2450,12 +2527,13 @@ static void LinkedBinding(const FunctionCallbackInfo<Value>& args) {
     return env->ThrowError("Linked module has no declared entry point.");
   }
 
-  cache->Set(module_name, module->Get(exports_prop));
+  auto effective_exports = module->Get(exports_prop);
+  cache->Set(module_name, effective_exports);
 
-  args.GetReturnValue().Set(exports);
+  args.GetReturnValue().Set(effective_exports);
 }
 
-static void ProcessTitleGetter(Local<String> property,
+static void ProcessTitleGetter(Local<Name> property,
                                const PropertyCallbackInfo<Value>& info) {
   char buffer[512];
   uv_get_process_title(buffer, sizeof(buffer));
@@ -2463,7 +2541,7 @@ static void ProcessTitleGetter(Local<String> property,
 }
 
 
-static void ProcessTitleSetter(Local<String> property,
+static void ProcessTitleSetter(Local<Name> property,
                                Local<Value> value,
                                const PropertyCallbackInfo<void>& info) {
   node::Utf8Value title(info.GetIsolate(), value);
@@ -2692,13 +2770,13 @@ static Local<Object> GetFeatures(Environment* env) {
 }
 
 
-static void DebugPortGetter(Local<String> property,
+static void DebugPortGetter(Local<Name> property,
                             const PropertyCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(debug_port);
 }
 
 
-static void DebugPortSetter(Local<String> property,
+static void DebugPortSetter(Local<Name> property,
                             Local<Value> value,
                             const PropertyCallbackInfo<void>& info) {
   debug_port = value->Int32Value();
@@ -2710,7 +2788,7 @@ static void DebugPause(const FunctionCallbackInfo<Value>& args);
 static void DebugEnd(const FunctionCallbackInfo<Value>& args);
 
 
-void NeedImmediateCallbackGetter(Local<String> property,
+void NeedImmediateCallbackGetter(Local<Name> property,
                                  const PropertyCallbackInfo<Value>& info) {
   Environment* env = Environment::GetCurrent(info);
   const uv_check_t* immediate_check_handle = env->immediate_check_handle();
@@ -2721,7 +2799,7 @@ void NeedImmediateCallbackGetter(Local<String> property,
 
 
 static void NeedImmediateCallbackSetter(
-    Local<String> property,
+    Local<Name> property,
     Local<Value> value,
     const PropertyCallbackInfo<void>& info) {
   Environment* env = Environment::GetCurrent(info);
@@ -2784,15 +2862,20 @@ void StopProfilerIdleNotifier(const FunctionCallbackInfo<Value>& args) {
 
 #define READONLY_PROPERTY(obj, str, var)                                      \
   do {                                                                        \
-    obj->ForceSet(OneByteString(env->isolate(), str), var, v8::ReadOnly);     \
+    obj->DefineOwnProperty(env->context(),                                    \
+                           OneByteString(env->isolate(), str),                \
+                           var,                                               \
+                           v8::ReadOnly).FromJust();                          \
   } while (0)
 
 #define READONLY_DONT_ENUM_PROPERTY(obj, str, var)                            \
   do {                                                                        \
-    obj->ForceSet(OneByteString(env->isolate(), str),                         \
-                  var,                                                        \
-                  static_cast<v8::PropertyAttribute>(v8::ReadOnly |           \
-                                                     v8::DontEnum));          \
+    obj->DefineOwnProperty(env->context(),                                    \
+                           OneByteString(env->isolate(), str),                \
+                           var,                                               \
+                           static_cast<v8::PropertyAttribute>(v8::ReadOnly |  \
+                                                              v8::DontEnum))  \
+        .FromJust();                                                          \
   } while (0)
 
 
@@ -2805,10 +2888,12 @@ void SetupProcessObject(Environment* env,
 
   Local<Object> process = env->process_object();
 
-  process->SetAccessor(env->title_string(),
-                       ProcessTitleGetter,
-                       ProcessTitleSetter,
-                       env->as_external());
+  auto maybe = process->SetAccessor(env->context(),
+                                    env->title_string(),
+                                    ProcessTitleGetter,
+                                    ProcessTitleSetter,
+                                    env->as_external());
+  CHECK(maybe.FromJust());
 
   // process.version
   READONLY_PROPERTY(process,
@@ -2966,15 +3051,18 @@ void SetupProcessObject(Environment* env,
                                                 EnvDeleter,
                                                 EnvEnumerator,
                                                 env->as_external());
-  Local<Object> process_env = process_env_template->NewInstance();
+  Local<Object> process_env =
+      process_env_template->NewInstance(env->context()).ToLocalChecked();
   process->Set(env->env_string(), process_env);
 
   READONLY_PROPERTY(process, "pid", Integer::New(env->isolate(), getpid()));
   READONLY_PROPERTY(process, "features", GetFeatures(env));
-  process->SetAccessor(env->need_imm_cb_string(),
-                       NeedImmediateCallbackGetter,
-                       NeedImmediateCallbackSetter,
-                       env->as_external());
+  maybe = process->SetAccessor(env->context(),
+                               env->need_imm_cb_string(),
+                               NeedImmediateCallbackGetter,
+                               NeedImmediateCallbackSetter,
+                               env->as_external());
+  CHECK(maybe.FromJust());
 
   // -e, --eval
   if (eval_string) {
@@ -3020,10 +3108,23 @@ void SetupProcessObject(Environment* env,
     READONLY_PROPERTY(process, "noDeprecation", True(env->isolate()));
   }
 
+  if (no_process_warnings) {
+    READONLY_PROPERTY(process, "noProcessWarnings", True(env->isolate()));
+  }
+
+  if (trace_warnings) {
+    READONLY_PROPERTY(process, "traceProcessWarnings", True(env->isolate()));
+  }
+
   // --throw-deprecation
   if (throw_deprecation) {
     READONLY_PROPERTY(process, "throwDeprecation", True(env->isolate()));
   }
+
+#ifdef NODE_NO_BROWSER_GLOBALS
+  // configure --no-browser-globals
+  READONLY_PROPERTY(process, "_noBrowserGlobals", True(env->isolate()));
+#endif  // NODE_NO_BROWSER_GLOBALS
 
   // --prof-process
   if (prof_process) {
@@ -3059,10 +3160,13 @@ void SetupProcessObject(Environment* env,
   process->Set(env->exec_path_string(), exec_path_value);
   delete[] exec_path;
 
-  process->SetAccessor(env->debug_port_string(),
-                       DebugPortGetter,
-                       DebugPortSetter,
-                       env->as_external());
+  maybe = process->SetAccessor(env->context(),
+                               env->debug_port_string(),
+                               DebugPortGetter,
+                               DebugPortSetter,
+                               env->as_external());
+  CHECK(maybe.FromJust());
+
 
   // define various internal methods
   env->SetMethod(process,
@@ -3169,7 +3273,7 @@ void LoadEnvironment(Environment* env) {
   // The node.js file returns a function 'f'
   atexit(AtExit);
 
-  TryCatch try_catch;
+  TryCatch try_catch(env->isolate());
 
   // Disable verbose mode to stop FatalException() handler from trying
   // to handle the exception. Errors this early in the start-up phase
@@ -3218,8 +3322,12 @@ void LoadEnvironment(Environment* env) {
 
   env->SetMethod(env->process_object(), "_rawDebug", RawDebug);
 
+  // Expose the global object as a property on itself
+  // (Allows you to set stuff on `global` from anywhere in JavaScript.)
+  global->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "global"), global);
+
   Local<Value> arg = env->process_object();
-  f->Call(global, 1, &arg);
+  f->Call(Null(env->isolate()), ARRAY_SIZE(&arg), &arg);
 }
 
 static void PrintHelp();
@@ -3258,6 +3366,8 @@ static bool ParseDebugOpt(const char* arg) {
 }
 
 static void PrintHelp() {
+  // XXX: If you add an option here, please also add it to doc/node.1 and
+  // doc/api/cli.markdown
   printf("Usage: node [options] [ -e script | script.js ] [arguments] \n"
          "       node debug script.js [arguments] \n"
          "\n"
@@ -3270,19 +3380,28 @@ static void PrintHelp() {
          "                        does not appear to be a terminal\n"
          "  -r, --require         module to preload (option can be repeated)\n"
          "  --no-deprecation      silence deprecation warnings\n"
+         "  --trace-deprecation   show stack traces on deprecations\n"
          "  --throw-deprecation   throw an exception anytime a deprecated "
          "function is used\n"
-         "  --trace-deprecation   show stack traces on deprecations\n"
+         "  --no-warnings         silence all process warnings\n"
+         "  --trace-warnings      show stack traces on process warnings\n"
          "  --trace-sync-io       show stack trace when use of sync IO\n"
          "                        is detected after the first tick\n"
          "  --track-heap-objects  track heap object allocations for heap "
          "snapshots\n"
          "  --prof-process        process v8 profiler output generated\n"
          "                        using --prof\n"
+         "  --zero-fill-buffers   automatically zero-fill all newly allocated\n"
+         "                        Buffer and SlowBuffer instances\n"
          "  --v8-options          print v8 command line options\n"
+         "  --v8-pool-size=num    set v8's thread pool size\n"
 #if HAVE_OPENSSL
          "  --tls-cipher-list=val use an alternative default TLS cipher list\n"
-#endif
+#if NODE_FIPS_MODE
+         "  --enable-fips         enable FIPS crypto at startup\n"
+         "  --force-fips          force FIPS crypto (cannot be disabled)\n"
+#endif  /* NODE_FIPS_MODE */
+#endif /* HAVE_OPENSSL */
 #if defined(NODE_HAVE_I18N_SUPPORT)
          "  --icu-data-dir=dir    set ICU data load path to dir\n"
          "                        (overrides NODE_ICU_DATA)\n"
@@ -3404,6 +3523,10 @@ static void ParseArgs(int* argc,
       force_repl = true;
     } else if (strcmp(arg, "--no-deprecation") == 0) {
       no_deprecation = true;
+    } else if (strcmp(arg, "--no-warnings") == 0) {
+      no_process_warnings = true;
+    } else if (strcmp(arg, "--trace-warnings") == 0) {
+      trace_warnings = true;
     } else if (strcmp(arg, "--trace-deprecation") == 0) {
       trace_deprecation = true;
     } else if (strcmp(arg, "--trace-sync-io") == 0) {
@@ -3418,13 +3541,23 @@ static void ParseArgs(int* argc,
     } else if (strcmp(arg, "--prof-process") == 0) {
       prof_process = true;
       short_circuit = true;
+    } else if (strcmp(arg, "--zero-fill-buffers") == 0) {
+      zero_fill_all_buffers = true;
     } else if (strcmp(arg, "--v8-options") == 0) {
       new_v8_argv[new_v8_argc] = "--help";
       new_v8_argc += 1;
+    } else if (strncmp(arg, "--v8-pool-size=", 15) == 0) {
+      v8_thread_pool_size = atoi(arg + 15);
 #if HAVE_OPENSSL
     } else if (strncmp(arg, "--tls-cipher-list=", 18) == 0) {
       default_cipher_list = arg + 18;
-#endif
+#if NODE_FIPS_MODE
+    } else if (strcmp(arg, "--enable-fips") == 0) {
+      enable_fips_crypto = true;
+    } else if (strcmp(arg, "--force-fips") == 0) {
+      force_fips_crypto = true;
+#endif /* NODE_FIPS_MODE */
+#endif /* HAVE_OPENSSL */
 #if defined(NODE_HAVE_I18N_SUPPORT)
     } else if (strncmp(arg, "--icu-data-dir=", 15) == 0) {
       icu_data_dir = arg + 15;
@@ -3547,7 +3680,7 @@ static void DispatchDebugMessagesAsyncCallback(uv_async_t* handle) {
   }
 
   Isolate::Scope isolate_scope(isolate);
-  v8::Debug::ProcessDebugMessages();
+  v8::Debug::ProcessDebugMessages(isolate);
   CHECK_EQ(nullptr, node_isolate.exchange(isolate));
 }
 
@@ -4104,7 +4237,8 @@ Environment* CreateEnvironment(Isolate* isolate,
   Local<FunctionTemplate> process_template = FunctionTemplate::New(isolate);
   process_template->SetClassName(FIXED_ONE_BYTE_STRING(isolate, "process"));
 
-  Local<Object> process_object = process_template->GetFunction()->NewInstance();
+  Local<Object> process_object =
+      process_template->GetFunction()->NewInstance(context).ToLocalChecked();
   env->set_process_object(process_object);
 
   SetupProcessObject(env, argc, argv, exec_argc, exec_argv);
@@ -4223,13 +4357,17 @@ int Start(int argc, char** argv) {
   Init(&argc, const_cast<const char**>(argv), &exec_argc, &exec_argv);
 
 #if HAVE_OPENSSL
+#ifdef NODE_FIPS_MODE
+  // In the case of FIPS builds we should make sure
+  // the random source is properly initialized first.
+  OPENSSL_init();
+#endif  // NODE_FIPS_MODE
   // V8 on Windows doesn't have a good source of entropy. Seed it from
   // OpenSSL's pool.
   V8::SetEntropySource(crypto::EntropySource);
 #endif
 
-  const int thread_pool_size = 4;
-  default_platform = v8::platform::CreateDefaultPlatform(thread_pool_size);
+  default_platform = v8::platform::CreateDefaultPlatform(v8_thread_pool_size);
   V8::InitializePlatform(default_platform);
   V8::Initialize();
 

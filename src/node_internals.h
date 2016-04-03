@@ -22,10 +22,10 @@ struct sockaddr;
         v8::String::NewFromUtf8(isolate, constant);                           \
     v8::PropertyAttribute constant_attributes =                               \
         static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete);    \
-    target->ForceSet(isolate->GetCurrentContext(),                            \
-                     constant_name,                                           \
-                     constant_value,                                          \
-                     constant_attributes);                                    \
+    target->DefineOwnProperty(isolate->GetCurrentContext(),                   \
+                              constant_name,                                  \
+                              constant_value,                                 \
+                              constant_attributes).FromJust();                \
   } while (0)
 
 namespace node {
@@ -235,6 +235,11 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
  private:
   Environment* env_;
 };
+
+// Clear any domain and/or uncaughtException handlers to force the error's
+// propagation and shutdown the process. Use this to force the process to exit
+// by clearing all callbacks that could handle the error.
+void ClearFatalExceptionHandlers(Environment* env);
 
 enum NodeInstanceType { MAIN, WORKER };
 
