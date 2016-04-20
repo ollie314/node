@@ -8,8 +8,11 @@ PREFIX ?= /usr/local
 FLAKY_TESTS ?= run
 TEST_CI_ARGS ?=
 STAGINGSERVER ?= node-www
-
 OSTYPE := $(shell uname -s | tr '[A-Z]' '[a-z]')
+
+ifdef JOBS
+  PARALLEL_ARGS = -j $(JOBS)
+endif
 
 ifdef QUICKCHECK
   QUICKCHECK_ARG := --quickcheck
@@ -168,7 +171,8 @@ test-all-valgrind: test-build
 	$(PYTHON) tools/test.py --mode=debug,release --valgrind
 
 test-ci: | build-addons
-	$(PYTHON) tools/test.py -p tap --logfile test.tap --mode=release --flaky-tests=$(FLAKY_TESTS) \
+	$(PYTHON) tools/test.py $(PARALLEL_ARGS) -p tap --logfile test.tap \
+		--mode=release --flaky-tests=$(FLAKY_TESTS) \
 		$(TEST_CI_ARGS) addons message parallel sequential
 
 test-release: test-build
@@ -480,7 +484,7 @@ doc-upload: tar
 	scp -pr out/doc/ $(STAGINGSERVER):nodejs/$(DISTTYPEDIR)/$(FULLVERSION)/docs/
 	ssh $(STAGINGSERVER) "touch nodejs/$(DISTTYPEDIR)/$(FULLVERSION)/docs.done"
 
-$(TARBALL)-headers: config.gypi release-only
+$(TARBALL)-headers: release-only
 	$(PYTHON) ./configure \
 		--prefix=/ \
 		--dest-cpu=$(DESTCPU) \
@@ -488,7 +492,7 @@ $(TARBALL)-headers: config.gypi release-only
 		--release-urlbase=$(RELEASE_URLBASE) \
 		$(CONFIG_FLAGS) $(BUILD_RELEASE_FLAGS)
 	HEADERS_ONLY=1 $(PYTHON) tools/install.py install '$(TARNAME)' '/'
-	find $(TARNAME)/ -type l | xargs rm # annoying on windows
+	find $(TARNAME)/ -type l | xargs rm -f
 	tar -cf $(TARNAME)-headers.tar $(TARNAME)
 	rm -rf $(TARNAME)
 	gzip -c -f -9 $(TARNAME)-headers.tar > $(TARNAME)-headers.tar.gz
@@ -603,8 +607,13 @@ bench-idle:
 	$(NODE) benchmark/idle_clients.js &
 
 jslint:
-	$(NODE) tools/eslint/bin/eslint.js benchmark lib src test tools/doc \
-		tools/eslint-rules --rulesdir tools/eslint-rules
+	$(NODE) tools/jslint.js -J benchmark lib src test tools/doc \
+	  tools/eslint-rules tools/jslint.js
+
+jslint-ci:
+	$(NODE) tools/jslint.js $(PARALLEL_ARGS) -f tap -o test-eslint.tap \
+		benchmark lib src test tools/doc \
+		tools/eslint-rules tools/jslint.js
 
 CPPLINT_EXCLUDE ?=
 CPPLINT_EXCLUDE += src/node_lttng.cc
@@ -633,14 +642,15 @@ cpplint:
 
 ifneq ("","$(wildcard tools/eslint/bin/eslint.js)")
 lint: jslint cpplint
+lint-ci: jslint-ci cpplint
 else
 lint:
 	@echo "Linting is not available through the source tarball."
 	@echo "Use the git repo instead:" \
 		"$ git clone https://github.com/nodejs/node.git"
-endif
 
 lint-ci: lint
+endif
 
 .PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean \
 	check uninstall install install-includes install-bin all staticlib \
@@ -648,4 +658,5 @@ lint-ci: lint
 	blog blogclean tar binary release-only bench-http-simple bench-idle \
 	bench-all bench bench-misc bench-array bench-buffer bench-net \
 	bench-http bench-fs bench-tls cctest run-ci test-v8 test-v8-intl \
-	test-v8-benchmarks test-v8-all v8 lint-ci bench-ci
+	test-v8-benchmarks test-v8-all v8 lint-ci bench-ci jslint-ci \
+	$(TARBALL)-headers

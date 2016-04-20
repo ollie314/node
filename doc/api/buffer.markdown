@@ -87,24 +87,26 @@ to one of these new APIs.*
   containing a *copy* of the provided string.
 * [`Buffer.alloc(size[, fill[, encoding]])`][buffer_alloc] returns a "filled"
   `Buffer` instance of the specified size. This method can be significantly
-  slower than [`Buffer.allocUnsafe(size)`][buffer_allocunsafe] but ensures that
-  newly created `Buffer` instances never contain old and potentially sensitive
-  data.
-* [`Buffer.allocUnsafe(size)`][buffer_allocunsafe] returns a new `Buffer` of
-  the specified `size` whose content *must* be initialized using either
-  [`buf.fill(0)`][] or written to completely.
+  slower than [`Buffer.allocUnsafe(size)`][buffer_allocunsafe] but ensures
+  that newly created `Buffer` instances never contain old and potentially
+  sensitive data.
+* [`Buffer.allocUnsafe(size)`][buffer_allocunsafe] and
+  [`Buffer.allocUnsafeSlow(size)`][buffer_allocunsafeslow] each return a
+  new `Buffer` of the specified `size` whose content *must* be initialized
+  using either [`buf.fill(0)`][] or written to completely.
 
 `Buffer` instances returned by `Buffer.allocUnsafe(size)` *may* be allocated
-off a shared internal memory pool if the `size` is less than or equal to half
-`Buffer.poolSize`.
+off a shared internal memory pool if `size` is less than or equal to half
+`Buffer.poolSize`. Instances returned by `Buffer.allocUnsafeSlow(size)` *never*
+use the shared internal memory pool.
 
 ### The `--zero-fill-buffers` command line option
 
 Node.js can be started using the `--zero-fill-buffers` command line option to
-force all newly allocated `Buffer` and `SlowBuffer` instances created using
-either `new Buffer(size)`, `Buffer.allocUnsafe(size)`, or
-`new SlowBuffer(size)` to be *automatically zero-filled* upon creation. Use of
-this flag *changes the default behavior* of these methods and *can have a
+force all newly allocated `Buffer` instances created using either
+`new Buffer(size)`, `Buffer.allocUnsafe(size)`, `Buffer.allocUnsafeSlow(size)`
+or `new SlowBuffer(size)` to be *automatically zero-filled* upon creation. Use
+of this flag *changes the default behavior* of these methods and *can have a
 significant impact* on performance. Use of the `--zero-fill-buffers` option is
 recommended only when absolutely necessary to enforce that newly allocated
 `Buffer` instances cannot contain potentially sensitive data.
@@ -115,14 +117,14 @@ $ node --zero-fill-buffers
 <Buffer 00 00 00 00 00>
 ```
 
-### What makes `Buffer.allocUnsafe(size)` "unsafe"?
+### What makes `Buffer.allocUnsafe(size)` and `Buffer.allocUnsafeSlow(size)` "unsafe"?
 
-When calling `Buffer.allocUnsafe()`, the segment of allocated memory is
-*uninitialized* (it is not zeroed-out). While this design makes the allocation
-of memory quite fast, the allocated segment of memory might contain old data
-that is potentially sensitive. Using a `Buffer` created by
-`Buffer.allocUnsafe(size)` without *completely* overwriting the memory can
-allow this old data to be leaked when the `Buffer` memory is read.
+When calling `Buffer.allocUnsafe()` (and `Buffer.allocUnsafeSlow()`), the
+segment of allocated memory is *uninitialized* (it is not zeroed-out). While
+this design makes the allocation of memory quite fast, the allocated segment of
+memory might contain old data that is potentially sensitive. Using a `Buffer`
+created by `Buffer.allocUnsafe()` without *completely* overwriting the memory
+can allow this old data to be leaked when the `Buffer` memory is read.
 
 While there are clear performance advantages to using `Buffer.allocUnsafe()`,
 extra care *must* be taken in order to avoid introducing security
@@ -339,8 +341,8 @@ console.log(buf);
 Allocates a new `Buffer` of `size` bytes.  The `size` must be less than
 or equal to the value of `require('buffer').kMaxLength` (on 64-bit
 architectures, `kMaxLength` is `(2^31)-1`). Otherwise, a [`RangeError`][] is
-thrown. If a `size` less than 0 is specified, a zero-length Buffer will be
-created.
+thrown. A zero-length Buffer will be created if a `size` less than or equal to
+0 is specified.
 
 Unlike `ArrayBuffers`, the underlying memory for `Buffer` instances created in
 this way is *not initialized*. The contents of a newly created `Buffer` are
@@ -397,8 +399,8 @@ console.log(buf);
 
 The `size` must be less than or equal to the value of
 `require('buffer').kMaxLength` (on 64-bit architectures, `kMaxLength` is
-`(2^31)-1`). Otherwise, a [`RangeError`][] is thrown. If a `size` less than 0
-is specified, a zero-length `Buffer` will be created.
+`(2^31)-1`). Otherwise, a [`RangeError`][] is thrown. A zero-length Buffer will
+be created if a `size` less than or equal to 0 is specified.
 
 If `fill` is specified, the allocated `Buffer` will be initialized by calling
 `buf.fill(fill)`. See [`buf.fill()`][] for more information.
@@ -431,8 +433,8 @@ A `TypeError` will be thrown if `size` is not a number.
 Allocates a new *non-zero-filled* `Buffer` of `size` bytes.  The `size` must
 be less than or equal to the value of `require('buffer').kMaxLength` (on 64-bit
 architectures, `kMaxLength` is `(2^31)-1`). Otherwise, a [`RangeError`][] is
-thrown. If a `size` less than 0 is specified, a zero-length `Buffer` will be
-created.
+thrown. A zero-length Buffer will be created if a `size` less than or equal to
+0 is specified.
 
 The underlying memory for `Buffer` instances created in this way is *not
 initialized*. The contents of the newly created `Buffer` are unknown and
@@ -465,6 +467,52 @@ pool, while `Buffer.allocUnsafe(size).fill(fill)` *will* use the internal
 Buffer pool if `size` is less than or equal to half `Buffer.poolSize`. The
 difference is subtle but can be important when an application requires the
 additional performance that `Buffer.allocUnsafe(size)` provides.
+
+### Class Method: Buffer.allocUnsafeSlow(size)
+
+* `size` {Number}
+
+Allocates a new *non-zero-filled* and non-pooled `Buffer` of `size` bytes.  The
+`size` must be less than or equal to the value of
+`require('buffer').kMaxLength` (on 64-bit architectures, `kMaxLength` is
+`(2^31)-1`). Otherwise, a [`RangeError`][] is thrown. A zero-length Buffer will
+be created if a `size` less than or equal to 0 is specified.
+
+The underlying memory for `Buffer` instances created in this way is *not
+initialized*. The contents of the newly created `Buffer` are unknown and
+*may contain sensitive data*. Use [`buf.fill(0)`][] to initialize such
+`Buffer` instances to zeroes.
+
+When using `Buffer.allocUnsafe()` to allocate new `Buffer` instances,
+allocations under 4KB are, by default, sliced from a single pre-allocated
+`Buffer`. This allows applications to avoid the garbage collection overhead of
+creating many individually allocated Buffers. This approach improves both
+performance and memory usage by eliminating the need to track and cleanup as
+many `Persistent` objects.
+
+However, in the case where a developer may need to retain a small chunk of
+memory from a pool for an indeterminate amount of time, it may be appropriate
+to create an un-pooled Buffer instance using `Buffer.allocUnsafeSlow()` then
+copy out the relevant bits.
+
+```js
+// need to keep around a few small chunks of memory
+const store = [];
+
+socket.on('readable', () => {
+  const data = socket.read();
+  // allocate for retained data
+  const sb = Buffer.allocUnsafeSlow(10);
+  // copy the data into the new allocation
+  data.copy(sb, 0, 0, 10);
+  store.push(sb);
+});
+```
+
+Use of `Buffer.allocUnsafeSlow()` should be used only as a last resort *after*
+a developer has observed undue memory retention in their applications.
+
+A `TypeError` will be thrown if `size` is not a number.
 
 ### Class Method: Buffer.byteLength(string[, encoding])
 
@@ -675,18 +723,26 @@ console.log(buf.toString('ascii'));
   // Prints: Node.js
 ```
 
-### buf.compare(otherBuffer)
+### buf.compare(target[, targetStart[, targetEnd[, sourceStart[, sourceEnd]]]])
 
-* `otherBuffer` {Buffer}
+* `target` {Buffer}
+* `targetStart` {Integer} The offset within `target` at which to begin
+  comparison. default = `0`.
+* `targetEnd` {Integer} The offset with `target` at which to end comparison.
+  Ignored when `targetStart` is `undefined`. default = `target.byteLength`.
+* `sourceStart` {Integer} The offset within `buf` at which to begin comparison.
+  Ignored when `targetStart` is `undefined`. default = `0`
+* `sourceEnd` {Integer} The offset within `buf` at which to end comparison.
+  Ignored when `targetStart` is `undefined`. default = `buf.byteLength`.
 * Return: {Number}
 
 Compares two Buffer instances and returns a number indicating whether `buf`
-comes before, after, or is the same as the `otherBuffer` in sort order.
+comes before, after, or is the same as the `target` in sort order.
 Comparison is based on the actual sequence of bytes in each Buffer.
 
-* `0` is returned if `otherBuffer` is the same as `buf`
-* `1` is returned if `otherBuffer` should come *before* `buf` when sorted.
-* `-1` is returned if `otherBuffer` should come *after* `buf` when sorted.
+* `0` is returned if `target` is the same as `buf`
+* `1` is returned if `target` should come *before* `buf` when sorted.
+* `-1` is returned if `target` should come *after* `buf` when sorted.
 
 ```js
 const buf1 = Buffer.from('ABC');
@@ -707,6 +763,25 @@ console.log(buf2.compare(buf3));
 [buf1, buf2, buf3].sort(Buffer.compare);
   // produces sort order [buf1, buf3, buf2]
 ```
+
+The optional `targetStart`, `targetEnd`, `sourceStart`, and `sourceEnd` 
+arguments can be used to limit the comparison to specific ranges within the two 
+`Buffer` objects.
+
+```js
+const buf1 = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const buf2 = Buffer.from([5, 6, 7, 8, 9, 1, 2, 3, 4]);
+
+console.log(buf1.compare(buf2, 5, 9, 0, 4));
+  // Prints: 0
+console.log(buf1.compare(buf2, 0, 6, 4));
+  // Prints: -1
+console.log(buf1.compare(buf2, 5, 6, 5));
+  // Prints: 1
+```
+
+A `RangeError` will be thrown if: `targetStart < 0`, `sourceStart < 0`,
+`targetEnd > target.byteLength` or `sourceEnd > source.byteLength`.
 
 ### buf.copy(targetBuffer[, targetStart[, sourceStart[, sourceEnd]]])
 
@@ -1132,8 +1207,8 @@ buf.readUInt8(1);
 * Return: {Number}
 
 Reads an unsigned 16-bit integer from the Buffer at the specified `offset` with
-specified endian format (`readInt32BE()` returns big endian,
-`readInt32LE()` returns little endian).
+specified endian format (`readUInt16BE()` returns big endian,
+`readUInt16LE()` returns little endian).
 
 Setting `noAssert` to `true` skips validation of the `offset`. This allows the
 `offset` to be beyond the end of the Buffer.
@@ -1165,8 +1240,8 @@ buf.readUInt16LE(2);
 * Return: {Number}
 
 Reads an unsigned 32-bit integer from the Buffer at the specified `offset` with
-specified endian format (`readInt32BE()` returns big endian,
-`readInt32LE()` returns little endian).
+specified endian format (`readUInt32BE()` returns big endian,
+`readUInt32LE()` returns little endian).
 
 Setting `noAssert` to `true` skips validation of the `offset`. This allows the
 `offset` to be beyond the end of the Buffer.
@@ -1707,6 +1782,9 @@ Note that this is a property on the `buffer` module as returned by
 
 ## Class: SlowBuffer
 
+    Stability: 0 - Deprecated: Use
+    [`Buffer.allocUnsafeSlow(size)`][buffer_allocunsafeslow] instead.
+
 Returns an un-pooled `Buffer`.
 
 In order to avoid the garbage collection overhead of creating many individually
@@ -1737,13 +1815,16 @@ has observed undue memory retention in their applications.
 
 ### new SlowBuffer(size)
 
+    Stability: 0 - Deprecated: Use
+    [`Buffer.allocUnsafeSlow(size)`][buffer_allocunsafeslow] instead.
+
 * `size` Number
 
 Allocates a new `SlowBuffer` of `size` bytes.  The `size` must be less than
 or equal to the value of `require('buffer').kMaxLength` (on 64-bit
 architectures, `kMaxLength` is `(2^31)-1`). Otherwise, a [`RangeError`][] is
-thrown. If a `size` less than 0 is specified, a zero-length `SlowBuffer` will be
-created.
+thrown. A zero-length Buffer will be created if a `size` less than or equal to
+0 is specified.
 
 The underlying memory for `SlowBuffer` instances is *not initialized*. The
 contents of a newly created `SlowBuffer` are unknown and could contain
@@ -1764,11 +1845,11 @@ console.log(buf);
 [`Array#indexOf()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf
 [`Array#includes()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/includes
 [`buf.entries()`]: #buffer_buf_entries
-[`buf.fill(0)`]: #buffer_buf_fill_value_offset_end
+[`buf.fill(0)`]: #buffer_buf_fill_value_offset_end_encoding
 [`buf.keys()`]: #buffer_buf_keys
 [`buf.slice()`]: #buffer_buf_slice_start_end
 [`buf.values()`]: #buffer_buf_values
-[`buf1.compare(buf2)`]: #buffer_buf_compare_otherbuffer
+[`buf1.compare(buf2)`]: #buffer_buf_compare_target_targetstart_targetend_sourcestart_sourceend
 [`JSON.stringify()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify
 [`RangeError`]: errors.html#errors_class_rangeerror
 [`String.prototype.length`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/length
@@ -1776,9 +1857,10 @@ console.log(buf);
 [RFC 4648, Section 5]: https://tools.ietf.org/html/rfc4648#section-5
 [buffer_from_array]: #buffer_class_method_buffer_from_array
 [buffer_from_buffer]: #buffer_class_method_buffer_from_buffer
-[buffer_from_arraybuf]: #buffer_class_method_buffer_from_arraybuffer
+[buffer_from_arraybuf]: #buffer_class_method_buffer_from_arraybuffer_byteoffset_length
 [buffer_from_string]: #buffer_class_method_buffer_from_str_encoding
-[buffer_allocunsafe]: #buffer_class_method_buffer_allocraw_size
+[buffer_allocunsafe]: #buffer_class_method_buffer_allocunsafe_size
+[buffer_allocunsafeslow]: #buffer_class_method_buffer_allocunsafeslow_size
 [buffer_alloc]: #buffer_class_method_buffer_alloc_size_fill_encoding
 [`TypedArray.from()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray/from
 [`DataView`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView

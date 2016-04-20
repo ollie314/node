@@ -94,6 +94,18 @@ Error: EISDIR, read
     <etc.>
 ```
 
+## Buffer API
+
+`fs` functions support passing and receiving paths as both strings
+and Buffers. The latter is intended to make it possible to work with
+filesystems that allow for non-UTF-8 filenames. For most typical
+uses, working with paths as Buffers will be unnecessary, as the string
+API converts to and from UTF-8 automatically.
+
+*Note* that on certain file systems (such as NTFS and HFS+) filenames
+will always be encoded as UTF-8. On such file systems, passing 
+non-UTF-8 encoded Buffers to `fs` functions will not work as expected.
+
 ## Class: fs.FSWatcher
 
 Objects returned from `fs.watch()` are of this type.
@@ -916,26 +928,20 @@ object with an `encoding` property specifying the character encoding to use for
 the link path passed to the callback. If the `encoding` is set to `'buffer'`,
 the link path returned will be passed as a `Buffer` object.
 
-## fs.realpath(path[, cache], callback)
+## fs.realpath(path[, options], callback)
 
 * `path` {String | Buffer}
-* `cache` {Object}
+* `options` {String | Object}
+  * `encoding` {String} default = `'utf8'`
 * `callback` {Function}
 
 Asynchronous realpath(2). The `callback` gets two arguments `(err,
-resolvedPath)`. May use `process.cwd` to resolve relative paths. `cache` is an
-object literal of mapped paths that can be used to force a specific path
-resolution or avoid additional `fs.stat` calls for known real paths.
+resolvedPath)`. May use `process.cwd` to resolve relative paths.
 
-Example:
-
-```js
-var cache = {'/etc':'/private/etc'};
-fs.realpath('/etc/passwd', cache, (err, resolvedPath) => {
-  if (err) throw err;
-  console.log(resolvedPath);
-});
-```
+The optional `options` argument can be a string specifying an encoding, or an
+object with an `encoding` property specifying the character encoding to use for
+the path passed to the callback. If the `encoding` is set to `'buffer'`,
+the path returned will be passed as a `Buffer` object.
 
 ## fs.readSync(fd, buffer, offset, length, position)
 
@@ -947,14 +953,18 @@ fs.realpath('/etc/passwd', cache, (err, resolvedPath) => {
 
 Synchronous version of [`fs.read()`][]. Returns the number of `bytesRead`.
 
-## fs.realpathSync(path[, cache])
+## fs.realpathSync(path[, options])
 
 * `path` {String | Buffer};
-* `cache` {Object}
+* `options` {String | Object}
+  * `encoding` {String} default = `'utf8'`
 
-Synchronous realpath(2). Returns the resolved path. `cache` is an
-object literal of mapped paths that can be used to force a specific path
-resolution or avoid additional `fs.stat` calls for known real paths.
+Synchronous realpath(2). Returns the resolved path.
+
+The optional `options` argument can be a string specifying an encoding, or an
+object with an `encoding` property specifying the character encoding to use for
+the path passed to the callback. If the `encoding` is set to `'buffer'`,
+the path returned will be passed as a `Buffer` object.
 
 ## fs.rename(oldPath, newPath, callback)
 
@@ -1156,6 +1166,16 @@ reliably or at all.
 
 You can still use `fs.watchFile`, which uses stat polling, but it is slower and
 less reliable.
+
+#### Inodes
+
+<!--type=misc-->
+
+On Linux and OS X systems, `fs.watch()` resolves the path to an [inode][] and
+watches the inode. If the watched path is deleted and recreated, it is assigned
+a new inode. The watch will emit an event for the delete but will continue
+watching the *original* inode. Events for the new inode will not be emitted.
+This is expected behavior.
 
 #### Filename Argument
 
@@ -1378,3 +1398,4 @@ Synchronous versions of [`fs.write()`][]. Returns the number of bytes written.
 [MDN-Date]: https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Date
 [Readable Stream]: stream.html#stream_class_stream_readable
 [Writable Stream]: stream.html#stream_class_stream_writable
+[inode]: http://www.linux.org/threads/intro-to-inodes.4130

@@ -24,7 +24,7 @@ var moduleFilename = require('path').join(common.fixturesDir, 'a');
 console.error('repl test');
 
 // function for REPL to run
-invoke_me = function(arg) {
+global.invoke_me = function(arg) {
   return 'invoked ' + arg;
 };
 
@@ -156,7 +156,7 @@ function error_test() {
       expect: /^SyntaxError: Unexpected number/ },
     // should throw
     { client: client_unix, send: 'JSON.parse(\'{\');',
-      expect: /^SyntaxError: Unexpected end of input/ },
+      expect: /^SyntaxError: Unexpected end of JSON input/ },
     // invalid RegExps are a special case of syntax error,
     // should throw
     { client: client_unix, send: '/(/;',
