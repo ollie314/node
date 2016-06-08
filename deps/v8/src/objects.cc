@@ -714,9 +714,14 @@ MaybeHandle<Object> Object::GetProperty(LookupIterator* it) {
       case LookupIterator::NOT_FOUND:
       case LookupIterator::TRANSITION:
         UNREACHABLE();
-      case LookupIterator::JSPROXY:
-        return JSProxy::GetProperty(it->isolate(), it->GetHolder<JSProxy>(),
-                                    it->GetName(), it->GetReceiver());
+      case LookupIterator::JSPROXY: {
+        bool was_found;
+        MaybeHandle<Object> result =
+            JSProxy::GetProperty(it->isolate(), it->GetHolder<JSProxy>(),
+                                 it->GetName(), it->GetReceiver(), &was_found);
+        if (!was_found) it->NotFound();
+        return result;
+      }
       case LookupIterator::INTERCEPTOR: {
         bool done;
         Handle<Object> result;
@@ -756,7 +761,9 @@ MaybeHandle<Object> Object::GetProperty(LookupIterator* it) {
 MaybeHandle<Object> JSProxy::GetProperty(Isolate* isolate,
                                          Handle<JSProxy> proxy,
                                          Handle<Name> name,
-                                         Handle<Object> receiver) {
+                                         Handle<Object> receiver,
+                                         bool* was_found) {
+  *was_found = true;
   if (receiver->IsJSGlobalObject()) {
     THROW_NEW_ERROR(
         isolate,
@@ -789,7 +796,9 @@ MaybeHandle<Object> JSProxy::GetProperty(Isolate* isolate,
     // 7.a Return target.[[Get]](P, Receiver).
     LookupIterator it =
         LookupIterator::PropertyOrElement(isolate, receiver, name, target);
-    return Object::GetProperty(&it);
+    MaybeHandle<Object> result = Object::GetProperty(&it);
+    *was_found = it.IsFound();
+    return result;
   }
   // 8. Let trapResult be ? Call(trap, handler, «target, P, Receiver»).
   Handle<Object> trap_result;
@@ -13345,6 +13354,18 @@ Handle<String> JSBoundFunction::ToString(Handle<JSBoundFunction> function) {
   return isolate->factory()->NewStringFromAsciiChecked(kNativeCodeSource);
 }
 
+// static
+MaybeHandle<String> JSBoundFunction::GetName(Isolate* isolate,
+                                             Handle<JSBoundFunction> function) {
+  Handle<String> prefix = isolate->factory()->bound__string();
+  if (!function->bound_target_function()->IsJSFunction()) return prefix;
+  Handle<JSFunction> target(JSFunction::cast(function->bound_target_function()),
+                            isolate);
+  Handle<Object> target_name = JSFunction::GetName(target);
+  if (!target_name->IsString()) return prefix;
+  Factory* factory = isolate->factory();
+  return factory->NewConsString(prefix, Handle<String>::cast(target_name));
+}
 
 // static
 Handle<String> JSFunction::ToString(Handle<JSFunction> function) {
@@ -13715,7 +13736,9 @@ void JSFunction::CalculateInstanceSizeForDerivedClass(
   for (PrototypeIterator iter(isolate, this,
                               PrototypeIterator::START_AT_RECEIVER);
        !iter.IsAtEnd(); iter.Advance()) {
-    JSFunction* func = iter.GetCurrent<JSFunction>();
+    JSReceiver* current = iter.GetCurrent<JSReceiver>();
+    if (!current->IsJSFunction()) break;
+    JSFunction* func = JSFunction::cast(current);
     SharedFunctionInfo* shared = func->shared();
     expected_nof_properties += shared->expected_nof_properties();
     if (!IsSubclassConstructor(shared->kind())) {
@@ -17347,6 +17370,16 @@ void HashTable<Derived, Shape, Key>::Rehash(Key key) {
       }
     }
   }
+  // Wipe deleted entries.
+  Heap* heap = GetHeap();
+  Object* the_hole = heap->the_hole_value();
+  Object* undefined = heap->undefined_value();
+  for (uint32_t current = 0; current < capacity; current++) {
+    if (get(EntryToIndex(current)) == the_hole) {
+      set(EntryToIndex(current), undefined);
+    }
+  }
+  SetNumberOfDeletedElements(0);
 }
 
 
@@ -18705,6 +18738,12 @@ Handle<ObjectHashTable> ObjectHashTable::Put(Handle<ObjectHashTable> table,
   if (entry != kNotFound) {
     table->set(EntryToIndex(entry) + 1, *value);
     return table;
+  }
+
+  // Rehash if more than 25% of the entries are deleted entries.
+  // TODO(jochen): Consider to shrink the fixed array in place.
+  if ((table->NumberOfDeletedElements() << 1) > table->NumberOfElements()) {
+    table->Rehash(isolate->factory()->undefined_value());
   }
 
   // Check whether the hash table should be extended.
