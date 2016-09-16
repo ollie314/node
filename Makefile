@@ -19,9 +19,9 @@ ifdef QUICKCHECK
 endif
 
 ifdef ENABLE_V8_TAP
-  TAP_V8 := --junitout v8-tap.xml
-  TAP_V8_INTL := --junitout v8-intl-tap.xml
-  TAP_V8_BENCHMARKS := --junitout v8-benchmarks-tap.xml
+  TAP_V8 := --junitout $(PWD)/v8-tap.xml
+  TAP_V8_INTL := --junitout $(PWD)/v8-intl-tap.xml
+  TAP_V8_BENCHMARKS := --junitout $(PWD)/v8-benchmarks-tap.xml
 endif
 
 V8_TEST_OPTIONS = $(V8_EXTRA_TEST_OPTIONS)
@@ -87,7 +87,8 @@ uninstall:
 	$(PYTHON) tools/install.py $@ '$(DESTDIR)' '$(PREFIX)'
 
 clean:
-	-rm -rf out/Makefile $(NODE_EXE) $(NODE_G_EXE) out/$(BUILDTYPE)/$(NODE_EXE)
+	-rm -rf out/Makefile $(NODE_EXE) $(NODE_G_EXE) out/$(BUILDTYPE)/$(NODE_EXE) \
+                out/$(BUILDTYPE)/node.exp
 	@if [ -d out ]; then find out/ -name '*.o' -o -name '*.a' -o -name '*.d' | xargs rm -rf; fi
 	-rm -rf node_modules
 	@if [ -d deps/icu ]; then echo deleting deps/icu; rm -rf deps/icu; fi
@@ -112,13 +113,13 @@ cctest: all
 
 v8:
 	tools/make-v8.sh v8
-	$(MAKE) -C deps/v8 $(V8_ARCH) $(V8_BUILD_OPTIONS)
+	$(MAKE) -C deps/v8 $(V8_ARCH).$(BUILDTYPE_LOWER) $(V8_BUILD_OPTIONS)
 
 test: all
 	$(MAKE) build-addons
 	$(MAKE) cctest
 	$(PYTHON) tools/test.py --mode=release -J \
-		addon doctool known_issues message pseudo-tty parallel sequential
+		addons doctool known_issues message pseudo-tty parallel sequential
 	$(MAKE) lint
 
 test-parallel: all
@@ -134,7 +135,13 @@ test/gc/node_modules/weak/build/Release/weakref.node: $(NODE_EXE)
 		--nodedir="$(shell pwd)"
 
 # Implicitly depends on $(NODE_EXE), see the build-addons rule for rationale.
-test/addons/.docbuildstamp: tools/doc/addon-verify.js doc/api/addons.md
+DOCBUILDSTAMP_PREREQS = tools/doc/addon-verify.js doc/api/addons.md
+
+ifeq ($(OSTYPE),aix)
+DOCBUILDSTAMP_PREREQS := $(DOCBUILDSTAMP_PREREQS) out/$(BUILDTYPE)/node.exp
+endif
+
+test/addons/.docbuildstamp: $(DOCBUILDSTAMP_PREREQS)
 	$(RM) -r test/addons/??_*/
 	$(NODE) $<
 	touch $@
@@ -143,11 +150,16 @@ ADDONS_BINDING_GYPS := \
 	$(filter-out test/addons/??_*/binding.gyp, \
 		$(wildcard test/addons/*/binding.gyp))
 
+ADDONS_BINDING_SOURCES := \
+	$(filter-out test/addons/??_*/*.cc, $(wildcard test/addons/*/*.cc)) \
+	$(filter-out test/addons/??_*/*.h, $(wildcard test/addons/*/*.h))
+
 # Implicitly depends on $(NODE_EXE), see the build-addons rule for rationale.
 # Depends on node-gyp package.json so that build-addons is (re)executed when
 # node-gyp is updated as part of an npm update.
-test/addons/.buildstamp: deps/npm/node_modules/node-gyp/package.json \
-	$(ADDONS_BINDING_GYPS) \
+test/addons/.buildstamp: config.gypi \
+	deps/npm/node_modules/node-gyp/package.json \
+	$(ADDONS_BINDING_GYPS) $(ADDONS_BINDING_SOURCES) \
 	deps/uv/include/*.h deps/v8/include/*.h \
 	src/node.h src/node_buffer.h src/node_object_wrap.h \
 	test/addons/.docbuildstamp
@@ -180,11 +192,25 @@ test-all: test-build test/gc/node_modules/weak/build/Release/weakref.node
 test-all-valgrind: test-build
 	$(PYTHON) tools/test.py --mode=debug,release --valgrind
 
+CI_NATIVE_SUITES := addons
+CI_JS_SUITES := doctool known_issues message parallel pseudo-tty sequential
+
+# Build and test addons without building anything else
+test-ci-native: | test/addons/.buildstamp
+	$(PYTHON) tools/test.py $(PARALLEL_ARGS) -p tap --logfile test.tap \
+		--mode=release --flaky-tests=$(FLAKY_TESTS) \
+		$(TEST_CI_ARGS) $(CI_NATIVE_SUITES)
+
+# This target should not use a native compiler at all
+test-ci-js:
+	$(PYTHON) tools/test.py $(PARALLEL_ARGS) -p tap --logfile test.tap \
+		--mode=release --flaky-tests=$(FLAKY_TESTS) \
+		$(TEST_CI_ARGS) $(CI_JS_SUITES)
+
 test-ci: | build-addons
 	$(PYTHON) tools/test.py $(PARALLEL_ARGS) -p tap --logfile test.tap \
 		--mode=release --flaky-tests=$(FLAKY_TESTS) \
-		$(TEST_CI_ARGS) addons doctool known_issues message pseudo-tty parallel \
-		sequential
+		$(TEST_CI_ARGS) $(CI_NATIVE_SUITES) $(CI_JS_SUITES)
 
 test-release: test-build
 	$(PYTHON) tools/test.py --mode=release
@@ -228,7 +254,7 @@ test-timers-clean:
 
 
 ifneq ("","$(wildcard deps/v8/tools/run-tests.py)")
-test-v8:
+test-v8: v8
 	# note: performs full test unless QUICKCHECK is specified
 	deps/v8/tools/run-tests.py --arch=$(V8_ARCH) \
         --mode=$(BUILDTYPE_LOWER) $(V8_TEST_OPTIONS) $(QUICKCHECK_ARG) \
@@ -236,14 +262,14 @@ test-v8:
         --shell-dir=$(PWD)/deps/v8/out/$(V8_ARCH).$(BUILDTYPE_LOWER) \
 	 $(TAP_V8)
 
-test-v8-intl:
+test-v8-intl: v8
 	# note: performs full test unless QUICKCHECK is specified
 	deps/v8/tools/run-tests.py --arch=$(V8_ARCH) \
         --mode=$(BUILDTYPE_LOWER) --no-presubmit $(QUICKCHECK_ARG) \
         --shell-dir=deps/v8/out/$(V8_ARCH).$(BUILDTYPE_LOWER) intl \
         $(TAP_V8_INTL)
 
-test-v8-benchmarks:
+test-v8-benchmarks: v8
 	deps/v8/tools/run-tests.py --arch=$(V8_ARCH) --mode=$(BUILDTYPE_LOWER) \
         --download-data $(QUICKCHECK_ARG) --no-presubmit \
         --shell-dir=deps/v8/out/$(V8_ARCH).$(BUILDTYPE_LOWER) benchmarks \
@@ -295,9 +321,11 @@ docopen: out/doc/api/all.html
 docclean:
 	-rm -rf out/doc
 
-run-ci:
+build-ci:
 	$(PYTHON) ./configure $(CONFIG_FLAGS)
 	$(MAKE)
+
+run-ci: build-ci
 	$(MAKE) test-ci
 
 RAWVER=$(shell $(PYTHON) tools/getnodeversion.py)
@@ -439,7 +467,8 @@ PACKAGEMAKER ?= /Developer/Applications/Utilities/PackageMaker.app/Contents/MacO
 PKGDIR=out/dist-osx
 
 release-only:
-	@if `grep -q REPLACEME doc/api/*.md`; then \
+	@if [ "$(DISTTYPE)" != "nightly" ] && [ "$(DISTTYPE)" != "next-nightly" ] && \
+		`grep -q REPLACEME doc/api/*.md`; then \
 		echo 'Please update Added: tags in the documentation first.' ; \
 		exit 1 ; \
 	fi
@@ -599,49 +628,42 @@ ifeq ($(XZ), 0)
 	ssh $(STAGINGSERVER) "touch nodejs/$(DISTTYPEDIR)/$(FULLVERSION)/node-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.xz.done"
 endif
 
-haswrk=$(shell which wrk > /dev/null 2>&1; echo $$?)
-wrk:
-ifneq ($(haswrk), 0)
-	@echo "please install wrk before proceeding. More information can be found in benchmark/README.md." >&2
-	@exit 1
-endif
-
 bench-net: all
-	@$(NODE) benchmark/common.js net
+	@$(NODE) benchmark/run.js net
 
 bench-crypto: all
-	@$(NODE) benchmark/common.js crypto
+	@$(NODE) benchmark/run.js crypto
 
 bench-tls: all
-	@$(NODE) benchmark/common.js tls
+	@$(NODE) benchmark/run.js tls
 
-bench-http: wrk all
-	@$(NODE) benchmark/common.js http
+bench-http: all
+	@$(NODE) benchmark/run.js http
 
 bench-fs: all
-	@$(NODE) benchmark/common.js fs
+	@$(NODE) benchmark/run.js fs
 
 bench-misc: all
 	@$(MAKE) -C benchmark/misc/function_call/
-	@$(NODE) benchmark/common.js misc
+	@$(NODE) benchmark/run.js misc
 
 bench-array: all
-	@$(NODE) benchmark/common.js arrays
+	@$(NODE) benchmark/run.js arrays
 
 bench-buffer: all
-	@$(NODE) benchmark/common.js buffers
+	@$(NODE) benchmark/run.js buffers
 
 bench-url: all
-	@$(NODE) benchmark/common.js url
+	@$(NODE) benchmark/run.js url
 
 bench-events: all
-	@$(NODE) benchmark/common.js events
+	@$(NODE) benchmark/run.js events
 
 bench-util: all
-	@$(NODE) benchmark/common.js util
+	@$(NODE) benchmark/run.js util
 
 bench-dgram: all
-	@$(NODE) benchmark/common.js dgram
+	@$(NODE) benchmark/run.js dgram
 
 bench-all: bench bench-misc bench-array bench-buffer bench-url bench-events bench-dgram bench-util
 
@@ -649,36 +671,21 @@ bench: bench-net bench-http bench-fs bench-tls
 
 bench-ci: bench
 
-bench-http-simple:
-	benchmark/http_simple_bench.sh
-
-bench-idle:
-	$(NODE) benchmark/idle_server.js &
-	sleep 1
-	$(NODE) benchmark/idle_clients.js &
-
 jslint:
-	$(NODE) tools/jslint.js -J benchmark lib src test tools/doc \
-	  tools/eslint-rules tools/jslint.js
+	$(NODE) tools/eslint/bin/eslint.js --cache --rulesdir=tools/eslint-rules \
+	  benchmark lib test tools
 
 jslint-ci:
 	$(NODE) tools/jslint.js $(PARALLEL_ARGS) -f tap -o test-eslint.tap \
-		benchmark lib src test tools/doc \
-		tools/eslint-rules tools/jslint.js
+		benchmark lib test tools
 
 CPPLINT_EXCLUDE ?=
-CPPLINT_EXCLUDE += src/node_lttng.cc
 CPPLINT_EXCLUDE += src/node_root_certs.h
-CPPLINT_EXCLUDE += src/node_lttng_tp.h
-CPPLINT_EXCLUDE += src/node_win32_perfctr_provider.cc
 CPPLINT_EXCLUDE += src/queue.h
 CPPLINT_EXCLUDE += src/tree.h
-CPPLINT_EXCLUDE += src/v8abbr.h
 CPPLINT_EXCLUDE += $(wildcard test/addons/??_*/*.cc test/addons/??_*/*.h)
 
 CPPLINT_FILES = $(filter-out $(CPPLINT_EXCLUDE), $(wildcard \
-	deps/debugger-agent/include/* \
-	deps/debugger-agent/src/* \
 	src/*.c \
 	src/*.cc \
 	src/*.h \
@@ -692,9 +699,18 @@ cpplint:
 	@$(PYTHON) tools/cpplint.py $(CPPLINT_FILES)
 	@$(PYTHON) tools/check-imports.py
 
-ifneq ("","$(wildcard tools/eslint/bin/eslint.js)")
+ifneq ("","$(wildcard tools/eslint/lib/eslint.js)")
 lint: jslint cpplint
+CONFLICT_RE=^>>>>>>> [0-9A-Fa-f]+|^<<<<<<< [A-Za-z]+
 lint-ci: jslint-ci cpplint
+	@if ! ( grep -IEqrs "$(CONFLICT_RE)" benchmark deps doc lib src test tools ) \
+		&& ! ( find . -maxdepth 1 -type f | xargs grep -IEqs "$(CONFLICT_RE)" ); then \
+		exit 0 ; \
+	else \
+		echo "" >&2 ; \
+		echo "Conflict marker detected in one or more files. Please fix them first." >&2 ; \
+		exit 1 ; \
+	fi
 else
 lint:
 	@echo "Linting is not available through the source tarball."
@@ -711,4 +727,4 @@ endif
 	bench-all bench bench-misc bench-array bench-buffer bench-net \
 	bench-http bench-fs bench-tls cctest run-ci test-v8 test-v8-intl \
 	test-v8-benchmarks test-v8-all v8 lint-ci bench-ci jslint-ci doc-only \
-	$(TARBALL)-headers
+	$(TARBALL)-headers test-ci test-ci-native test-ci-js build-ci

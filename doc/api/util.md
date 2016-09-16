@@ -1,6 +1,6 @@
 # util
 
-    Stability: 2 - Stable
+> Stability: 2 - Stable
 
 The `util` module is primarily designed to support the needs of Node.js' own
 internal APIs. However, many of the utilities are useful for application and
@@ -11,6 +11,9 @@ const util = require('util');
 ```
 
 ## util.debuglog(section)
+<!-- YAML
+added: v0.11.3
+-->
 
 * `section` {String} A string identifying the portion of the application for
   which the `debuglog` function is being created.
@@ -20,7 +23,7 @@ The `util.debuglog()` method is used to create a function that conditionally
 writes debug messages to `stderr` based on the existence of the `NODE_DEBUG`
 environment variable.  If the `section` name appears within the value of that
 environment variable, then the returned function operates similar to
-`console.error()`.  If not, then the returned function is a no-op.
+[`console.error()`][].  If not, then the returned function is a no-op.
 
 For example:
 
@@ -34,7 +37,7 @@ debuglog('hello from foo [%d]', 123);
 If this program is run with `NODE_DEBUG=foo` in the environment, then
 it will output something like:
 
-```
+```txt
 FOO 3245: hello from foo [123]
 ```
 
@@ -45,14 +48,17 @@ Multiple comma-separated `section` names may be specified in the `NODE_DEBUG`
 environment variable. For example: `NODE_DEBUG=fs,net,tls`.
 
 ## util.deprecate(function, string)
+<!-- YAML
+added: v0.8.0
+-->
 
-The `util.deprecate()` method wraps the given `function` in such a way that
+The `util.deprecate()` method wraps the given `function` or class in such a way that
 it is marked as deprecated.
 
 ```js
 const util = require('util');
 
-exports.puts = util.deprecate(() => {
+exports.puts = util.deprecate(function() {
   for (var i = 0, len = arguments.length; i < len; ++i) {
     process.stdout.write(arguments[i] + '\n');
   }
@@ -82,9 +88,12 @@ The `--throw-deprecation` command line flag and `process.throwDeprecation`
 property take precedence over `--trace-deprecation` and
 `process.traceDeprecation`.
 
-## util.format(format[, ...])
+## util.format(format[, ...args])
+<!-- YAML
+added: v0.5.3
+-->
 
-* `format` {string} A `printf`-like format string.
+* `format` {String} A `printf`-like format string.
 
 The `util.format()` method returns a formatted string using the first argument
 as a `printf`-like format.
@@ -125,6 +134,9 @@ util.format(1, 2, 3); // '1 2 3'
 ```
 
 ## util.inherits(constructor, superConstructor)
+<!-- YAML
+added: v0.3.0
+-->
 
 _Note: usage of `util.inherits()` is discouraged. Please use the ES6 `class` and
 `extends` keywords to get language level inheritance support. Also note that
@@ -145,14 +157,14 @@ const util = require('util');
 const EventEmitter = require('events');
 
 function MyStream() {
-    EventEmitter.call(this);
+  EventEmitter.call(this);
 }
 
 util.inherits(MyStream, EventEmitter);
 
 MyStream.prototype.write = function(data) {
-    this.emit('data', data);
-}
+  this.emit('data', data);
+};
 
 const stream = new MyStream();
 
@@ -161,11 +173,38 @@ console.log(MyStream.super_ === EventEmitter); // true
 
 stream.on('data', (data) => {
   console.log(`Received data: "${data}"`);
-})
+});
 stream.write('It works!'); // Received data: "It works!"
 ```
 
+ES6 example using `class` and `extends`
+
+```js
+const util = require('util');
+const EventEmitter = require('events');
+
+class MyStream extends EventEmitter {
+  constructor() {
+    super();
+  }
+  write(data) {
+    this.emit('data', data);
+  }
+}
+
+const stream = new MyStream();
+
+stream.on('data', (data) => {
+  console.log(`Received data: "${data}"`);
+});
+stream.write('With ES6');
+
+```
+
 ## util.inspect(object[, options])
+<!-- YAML
+added: v0.3.0
+-->
 
 * `object` {any} Any JavaScript primitive or Object.
 * `options` {Object}
@@ -187,6 +226,9 @@ stream.write('It works!'); // Received data: "It works!"
     `TypedArray` elements to include when formatting. Defaults to `100`. Set to
     `null` to show all array elements. Set to `0` or negative to show no array
     elements.
+  * `breakLength` {number} The length at which an object's keys are split
+    across multiple lines. Set to `Infinity` to format an object as a single
+    line. Defaults to 60 for legacy compatibility.
 
 The `util.inspect()` method returns a string representation of `object` that is
 primarily useful for debugging. Additional `options` may be passed that alter
@@ -233,18 +275,19 @@ The predefined color codes are: `white`, `grey`, `black`, `blue`, `cyan`,
 Color styling uses ANSI control codes that may not be supported on all
 terminals.
 
-### Custom `inspect()` function on Objects
+### Custom inspection functions on Objects
 
 <!-- type=misc -->
 
-Objects may also define their own `inspect(depth, opts)` function that
-`util.inspect()` will invoke and use the result of when inspecting the object:
+Objects may also define their own `[util.inspect.custom](depth, opts)`
+(or, equivalently `inspect(depth, opts)`) function that `util.inspect()` will
+invoke and use the result of when inspecting the object:
 
 ```js
 const util = require('util');
 
 const obj = { name: 'nate' };
-obj.inspect = function(depth) {
+obj[util.inspect.custom] = function(depth) {
   return `{${this.name}}`;
 };
 
@@ -252,9 +295,24 @@ util.inspect(obj);
   // "{nate}"
 ```
 
-Custom `inspect(depth, opts)` functions typically return a string but may
-return a value of any type that will be formatted accordingly by
+Custom `[util.inspect.custom](depth, opts)` functions typically return a string
+but may return a value of any type that will be formatted accordingly by
 `util.inspect()`.
+
+```js
+const util = require('util');
+
+const obj = { foo: 'this will not show up in the inspect() output' };
+obj[util.inspect.custom] = function(depth) {
+  return { bar: 'baz' };
+};
+
+util.inspect(obj);
+  // "{ bar: 'baz' }"
+```
+
+A custom inspection method can alternatively be provided by exposing
+an `inspect(depth, opts)` method on the object:
 
 ```js
 const util = require('util');
@@ -268,30 +326,70 @@ util.inspect(obj);
   // "{ bar: 'baz' }"
 ```
 
+### util.inspect.defaultOptions
+<!-- YAML
+added: v6.4.0
+-->
+
+The `defaultOptions` value allows customization of the default options used by
+`util.inspect`. This is useful for functions like `console.log` or
+`util.format` which implicitly call into `util.inspect`. It shall be set to an
+object containing one or more valid [`util.inspect()`][] options. Setting
+option properties directly is also supported.
+
+```js
+const util = require('util');
+const arr = Array(101);
+
+console.log(arr); // logs the truncated array
+util.inspect.defaultOptions.maxArrayLength = null;
+console.log(arr); // logs the full array
+```
+
+### util.inspect.custom
+<!-- YAML
+added: v6.6.0
+-->
+
+A Symbol that can be used to declare custom inspect functions, see
+[Custom inspection functions on Objects][].
+
 ## Deprecated APIs
 
 The following APIs have been deprecated and should no longer be used. Existing
 applications and modules should be updated to find alternative approaches.
 
 ### util.debug(string)
+<!-- YAML
+added: v0.3.0
+deprecated: v0.11.3
+-->
 
-    Stability: 0 - Deprecated: Use [`console.error()`][] instead.
+> Stability: 0 - Deprecated: Use [`console.error()`][] instead.
 
-* `string` {string} The message to print to `stderr`
+* `string` {String} The message to print to `stderr`
 
 Deprecated predecessor of `console.error`.
 
-### util.error([...])
+### util.error([...strings])
+<!-- YAML
+added: v0.3.0
+deprecated: v0.11.3
+-->
 
-    Stability: 0 - Deprecated: Use [`console.error()`][] instead.
+> Stability: 0 - Deprecated: Use [`console.error()`][] instead.
 
-* `string` {string} The message to print to `stderr`
+* `...strings` {String} The message to print to `stderr`
 
 Deprecated predecessor of `console.error`.
 
 ### util.isArray(object)
+<!-- YAML
+added: v0.6.0
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -311,8 +409,12 @@ util.isArray({});
 ```
 
 ### util.isBoolean(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -330,8 +432,12 @@ util.isBoolean(false);
 ```
 
 ### util.isBuffer(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated: Use [`Buffer.isBuffer()`][] instead.
+> Stability: 0 - Deprecated: Use [`Buffer.isBuffer()`][] instead.
 
 * `object` {any}
 
@@ -349,8 +455,12 @@ util.isBuffer(Buffer.from('hello world'));
 ```
 
 ### util.isDate(object)
+<!-- YAML
+added: v0.6.0
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -368,8 +478,12 @@ util.isDate({});
 ```
 
 ### util.isError(object)
+<!-- YAML
+added: v0.6.0
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -403,8 +517,12 @@ util.isError(obj);
 ```
 
 ### util.isFunction(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -426,8 +544,12 @@ util.isFunction(Bar);
 ```
 
 ### util.isNull(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -446,8 +568,12 @@ util.isNull(null);
 ```
 
 ### util.isNullOrUndefined(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -466,8 +592,12 @@ util.isNullOrUndefined(null);
 ```
 
 ### util.isNumber(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -487,8 +617,12 @@ util.isNumber(NaN);
 ```
 
 ### util.isObject(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -509,8 +643,12 @@ util.isObject(function(){});
 ```
 
 ### util.isPrimitive(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -541,8 +679,12 @@ util.isPrimitive(new Date());
 ```
 
 ### util.isRegExp(object)
+<!-- YAML
+added: v0.6.0
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -560,8 +702,12 @@ util.isRegExp({});
 ```
 
 ### util.isString(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -581,8 +727,12 @@ util.isString(5);
 ```
 
 ### util.isSymbol(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -600,8 +750,12 @@ util.isSymbol(Symbol('foo'));
 ```
 
 ### util.isUndefined(object)
+<!-- YAML
+added: v0.11.5
+deprecated: v4.0.0
+-->
 
-    Stability: 0 - Deprecated
+> Stability: 0 - Deprecated
 
 * `object` {any}
 
@@ -620,10 +774,14 @@ util.isUndefined(null);
 ```
 
 ### util.log(string)
+<!-- YAML
+added: v0.3.0
+deprecated: v6.0.0
+-->
 
-    Stability: 0 - Deprecated: Use a third party module instead.
+> Stability: 0 - Deprecated: Use a third party module instead.
 
-* `string` {string}
+* `string` {String}
 
 The `util.log()` method prints the given `string` to `stdout` with an included
 timestamp.
@@ -634,34 +792,48 @@ const util = require('util');
 util.log('Timestamped message.');
 ```
 
-### util.print([...])
+### util.print([...strings])
+<!-- YAML
+added: v0.3.0
+deprecated: v0.11.3
+-->
 
-    Stability: 0 - Deprecated: Use [`console.log()`][] instead.
-
-Deprecated predecessor of `console.log`.
-
-### util.puts([...])
-
-    Stability: 0 - Deprecated: Use [`console.log()`][] instead.
+> Stability: 0 - Deprecated: Use [`console.log()`][] instead.
 
 Deprecated predecessor of `console.log`.
 
-### util._extend(obj)
+### util.puts([...strings])
+<!-- YAML
+added: v0.3.0
+deprecated: v0.11.3
+-->
 
-    Stability: 0 - Deprecated: Use Object.assign() instead.
+> Stability: 0 - Deprecated: Use [`console.log()`][] instead.
+
+Deprecated predecessor of `console.log`.
+
+### util.\_extend(target, source)
+<!-- YAML
+added: v0.7.5
+deprecated: v6.0.0
+-->
+
+> Stability: 0 - Deprecated: Use [`Object.assign()`] instead.
 
 The `util._extend()` method was never intended to be used outside of internal
 Node.js modules. The community found and used it anyway.
 
 It is deprecated and should not be used in new code. JavaScript comes with very
-similar built-in functionality through `Object.assign()`.
+similar built-in functionality through [`Object.assign()`].
 
 [`Array.isArray`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/isArray
 [constructor]: https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Object/constructor
 [semantically incompatible]: https://github.com/nodejs/node/issues/4179
+[`util.inspect()`]: #util_util_inspect_object_options
 [Customizing `util.inspect` colors]: #util_customizing_util_inspect_colors
-[here]: #util_customizing_util_inspect_colors
+[Custom inspection functions on Objects]: #util_custom_inspection_functions_on_objects
 [`Error`]: errors.html#errors_class_error
-[`console.log()`]: console.html#console_console_log_data
-[`console.error()`]: console.html#console_console_error_data
+[`console.log()`]: console.html#console_console_log_data_args
+[`console.error()`]: console.html#console_console_error_data_args
 [`Buffer.isBuffer()`]: buffer.html#buffer_class_method_buffer_isbuffer_obj
+[`Object.assign()`]: https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Object/assign

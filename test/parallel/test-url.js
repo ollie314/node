@@ -1,9 +1,10 @@
 /* eslint-disable max-len */
 'use strict';
 require('../common');
-var assert = require('assert');
+const assert = require('assert');
+const inspect = require('util').inspect;
 
-var url = require('url');
+const url = require('url');
 
 // URLs to parse, and expected data
 // { url : parsed }
@@ -881,8 +882,16 @@ for (const u in parseTests) {
     }
   });
 
-  assert.deepStrictEqual(actual, expected);
-  assert.deepStrictEqual(spaced, expected);
+  assert.deepStrictEqual(
+    actual,
+    expected,
+    `expected ${inspect(expected)}, got ${inspect(actual)}`
+  );
+  assert.deepStrictEqual(
+    spaced,
+    expected,
+    `expected ${inspect(expected)}, got ${inspect(spaced)}`
+  );
 
   expected = parseTests[u].href;
   actual = url.format(parseTests[u]);
@@ -1165,6 +1174,27 @@ var formatTests = {
     hash: '#frag',
     search: '?abc=the#1?&foo=bar',
     pathname: '/fooA100%mBr',
+  },
+
+  // multiple `#` in search
+  'http://example.com/?foo=bar%231%232%233&abc=%234%23%235#frag': {
+    href: 'http://example.com/?foo=bar%231%232%233&abc=%234%23%235#frag',
+    protocol: 'http:',
+    slashes: true,
+    host: 'example.com',
+    hostname: 'example.com',
+    hash: '#frag',
+    search: '?foo=bar#1#2#3&abc=#4##5',
+    query: {},
+    pathname: '/'
+  },
+
+  // https://github.com/nodejs/node/issues/3361
+  'file:///home/user': {
+    href: 'file:///home/user',
+    protocol: 'file',
+    pathname: '/home/user',
+    path: '/home/user'
   }
 };
 for (const u in formatTests) {
@@ -1172,13 +1202,13 @@ for (const u in formatTests) {
   delete formatTests[u].href;
   const actual = url.format(u);
   const actualObj = url.format(formatTests[u]);
-  assert.equal(actual, expect,
-               'wonky format(' + u + ') == ' + expect +
-               '\nactual:' + actual);
-  assert.equal(actualObj, expect,
-               'wonky format(' + JSON.stringify(formatTests[u]) +
-               ') == ' + expect +
-               '\nactual: ' + actualObj);
+  assert.strictEqual(actual, expect,
+                     'wonky format(' + u + ') == ' + expect +
+                     '\nactual:' + actual);
+  assert.strictEqual(actualObj, expect,
+                     'wonky format(' + JSON.stringify(formatTests[u]) +
+                     ') == ' + expect +
+                     '\nactual: ' + actualObj);
 }
 
 /*
@@ -1540,6 +1570,11 @@ var relativeTests2 = [
    'http://asdf:qwer@www.example.com',
    'http://diff:auth@www.example.com/'],
 
+  // changing port
+  ['https://example.com:81/',
+   'https://example.com:82/',
+   'https://example.com:81/'],
+
   // https://github.com/nodejs/node/issues/1435
   ['https://another.host.com/',
    'https://user:password@example.org/',
@@ -1553,10 +1588,13 @@ var relativeTests2 = [
   ['mailto:another.host.com',
    'mailto:user@example.org',
    'mailto:another.host.com'],
+  ['https://example.com/foo',
+   'https://user:password@example.com',
+   'https://user:password@example.com/foo'],
 ];
 relativeTests2.forEach(function(relativeTest) {
   const a = url.resolve(relativeTest[1], relativeTest[0]);
-  const e = relativeTest[2];
+  const e = url.format(relativeTest[2]);
   assert.equal(a, e,
                'resolve(' + [relativeTest[1], relativeTest[0]] + ') == ' + e +
                '\n  actual=' + a);
@@ -1598,9 +1636,13 @@ relativeTests2.forEach(function(relativeTest) {
   var actual = url.resolveObject(url.parse(relativeTest[1]), relativeTest[0]);
   var expected = url.parse(relativeTest[2]);
 
-  assert.deepStrictEqual(actual, expected);
+  assert.deepStrictEqual(
+    actual,
+    expected,
+    `expected ${inspect(expected)} but got ${inspect(actual)}`
+  );
 
-  expected = relativeTest[2];
+  expected = url.format(relativeTest[2]);
   actual = url.format(actual);
 
   assert.equal(actual, expected,

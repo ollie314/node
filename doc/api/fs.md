@@ -1,6 +1,6 @@
 # File System
 
-    Stability: 2 - Stable
+> Stability: 2 - Stable
 
 <!--name=fs-->
 
@@ -74,7 +74,7 @@ Most fs functions let you omit the callback argument. If you do, a default
 callback is used that rethrows errors. To get a trace to the original call
 site, set the `NODE_DEBUG` environment variable:
 
-```
+```txt
 $ cat script.js
 function bad() {
   require('fs').readFile('/');
@@ -109,14 +109,19 @@ non-UTF-8 encoded Buffers to `fs` functions will not work as expected.
 added: v0.5.8
 -->
 
-Objects returned from `fs.watch()` are of this type.
+Objects returned from [`fs.watch()`][] are of this type.
+
+The `listener` callback provided to `fs.watch()` receives the returned FSWatcher's
+`change` events.
+
+The object itself emits these events:
 
 ### Event: 'change'
 <!-- YAML
 added: v0.5.8
 -->
 
-* `event` {String} The type of fs change
+* `eventType` {String} The type of fs change
 * `filename` {String | Buffer} The filename that changed (if relevant/available)
 
 Emitted when something changes in a watched directory or file.
@@ -128,7 +133,8 @@ support. If `filename` is provided, it will be provided as a `Buffer` if
 `filename` will be a string.
 
 ```js
-fs.watch('./tmp', {encoding: 'buffer'}, (event, filename) => {
+// Example when handled through fs.watch listener
+fs.watch('./tmp', {encoding: 'buffer'}, (eventType, filename) => {
   if (filename)
     console.log(filename);
     // Prints: <Buffer ...>
@@ -174,6 +180,13 @@ added: v0.1.93
 
 Emitted when the `ReadStream`'s underlying file descriptor has been closed
 using the `fs.close()` method.
+
+### readStream.bytesRead
+<!-- YAML
+added: 6.4.0
+-->
+
+The number of bytes read so far.
 
 ### readStream.path
 <!-- YAML
@@ -302,7 +315,7 @@ argument to `fs.createWriteStream()`. If `path` is passed as a string, then
 
 ## fs.access(path[, mode], callback)
 <!-- YAML
-added: v1.0.0
+added: v0.11.15
 -->
 
 * `path` {String | Buffer}
@@ -334,9 +347,96 @@ fs.access('/etc/passwd', fs.constants.R_OK | fs.constants.W_OK, (err) => {
 });
 ```
 
+Using `fs.access()` to check for the accessibility of a file before calling
+`fs.open()`, `fs.readFile()` or `fs.writeFile()` is not recommended. Doing
+so introduces a race condition, since other processes may change the file's
+state between the two calls. Instead, user code should open/read/write the
+file directly and handle the error raised if the file is not accessible.
+
+For example:
+
+
+**write (NOT RECOMMENDED)**
+
+```js
+fs.access('myfile', (err) => {
+  if (!err) {
+    console.error('myfile already exists');
+    return;
+  }
+
+  fs.open('myfile', 'wx', (err, fd) => {
+    if (err) throw err;
+    writeMyData(fd);
+  });
+});
+```
+
+**write (RECOMMENDED)**
+
+```js
+fs.open('myfile', 'wx', (err, fd) => {
+  if (err) {
+    if (err.code === "EEXIST") {
+      console.error('myfile already exists');
+      return;
+    } else {
+      throw err;
+    }
+  }
+
+  writeMyData(fd);
+});
+```
+
+**read (NOT RECOMMENDED)**
+
+```js
+fs.access('myfile', (err) => {
+  if (err) {
+    if (err.code === "ENOENT") {
+      console.error('myfile does not exist');
+      return;
+    } else {
+      throw err;
+    }
+  }
+
+  fs.open('myfile', 'r', (err, fd) => {
+    if (err) throw err;
+    readMyData(fd);
+  });
+});
+```
+
+**read (RECOMMENDED)**
+
+```js
+fs.open('myfile', 'r', (err, fd) => {
+  if (err) {
+    if (err.code === "ENOENT") {
+      console.error('myfile does not exist');
+      return;
+    } else {
+      throw err;
+    }
+  }
+
+  readMyData(fd);
+});
+```
+
+The "not recommended" examples above check for accessibility and then use the
+file; the "recommended" examples are better because they use the file directly
+and handle the error, if any.
+
+In general, check for the accessibility of a file only if the file won’t be
+used directly, for example when its accessibility is a signal from another
+process.
+
 ## fs.accessSync(path[, mode])
 <!-- YAML
-added: v0.1.93
+added: v0.11.15
 -->
 
 * `path` {String | Buffer}
@@ -378,7 +478,8 @@ fs.appendFile('message.txt', 'data to append', 'utf8', callback);
 
 Any specified file descriptor has to have been opened for appending.
 
-_Note: Specified file descriptors will not be closed automatically._
+_Note: If a file descriptor is specified as the `file`, it will not be closed
+automatically._
 
 ## fs.appendFileSync(file, data[, options])
 <!-- YAML
@@ -578,7 +679,7 @@ added: v0.0.2
 deprecated: v1.0.0
 -->
 
-    Stability: 0 - Deprecated: Use [`fs.stat()`][] or [`fs.access()`][] instead.
+> Stability: 0 - Deprecated: Use [`fs.stat()`][] or [`fs.access()`][] instead.
 
 * `path` {String | Buffer}
 * `callback` {Function}
@@ -592,11 +693,83 @@ fs.exists('/etc/passwd', (exists) => {
 });
 ```
 
-`fs.exists()` should not be used to check if a file exists before calling
-`fs.open()`. Doing so introduces a race condition since other processes may
-change the file's state between the two calls. Instead, user code should
-call `fs.open()` directly and handle the error raised if the file is
-non-existent.
+Using `fs.exists()` to check for the existence of a file before calling
+`fs.open()`, `fs.readFile()` or `fs.writeFile()` is not recommended. Doing
+so introduces a race condition, since other processes may change the file's
+state between the two calls. Instead, user code should open/read/write the
+file directly and handle the error raised if the file does not exist.
+
+For example:
+
+**write (NOT RECOMMENDED)**
+
+```js
+fs.exists('myfile', (exists) => {
+  if (exists) {
+    console.error('myfile already exists');
+  } else {
+    fs.open('myfile', 'wx', (err, fd) => {
+      if (err) throw err;
+      writeMyData(fd);
+    });
+  }
+});
+```
+
+**write (RECOMMENDED)**
+
+```js
+fs.open('myfile', 'wx', (err, fd) => {
+  if (err) {
+    if (err.code === "EEXIST") {
+      console.error('myfile already exists');
+      return;
+    } else {
+      throw err;
+    }
+  }
+  writeMyData(fd);
+});
+```
+
+**read (NOT RECOMMENDED)**
+
+```js
+fs.exists('myfile', (exists) => {
+  if (exists) {
+    fs.open('myfile', 'r', (err, fd) => {
+      readMyData(fd);
+    });
+  } else {
+    console.error('myfile does not exist');
+  }
+});
+```
+
+**read (RECOMMENDED)**
+
+```js
+fs.open('myfile', 'r', (err, fd) => {
+  if (err) {
+    if (err.code === "ENOENT") {
+      console.error('myfile does not exist');
+      return;
+    } else {
+      throw err;
+    }
+  } else {
+    readMyData(fd);
+  }
+});
+```
+
+The "not recommended" examples above check for existence and then use the
+file; the "recommended" examples are better because they use the file directly
+and handle the error, if any.
+
+In general, check for the existence of a file only if the file won’t be
+used directly, for example when its existence is a signal from another
+process.
 
 ## fs.existsSync(path)
 <!-- YAML
@@ -604,8 +777,8 @@ added: v0.1.21
 deprecated: v1.0.0
 -->
 
-    Stability: 0 - Deprecated: Use [`fs.statSync()`][] or [`fs.accessSync()`][]
-    instead.
+> Stability: 0 - Deprecated: Use [`fs.statSync()`][] or [`fs.accessSync()`][]
+> instead.
 
 * `path` {String | Buffer}
 
@@ -725,11 +898,52 @@ added: v0.8.6
 -->
 
 * `fd` {Integer}
-* `len` {Integer}
+* `len` {Integer} default = `0`
 * `callback` {Function}
 
 Asynchronous ftruncate(2). No arguments other than a possible exception are
 given to the completion callback.
+
+If the file referred to by the file descriptor was larger than `len` bytes, only
+the first `len` bytes will be retained in the file.
+
+For example, the following program retains only the first four bytes of the file
+
+```js
+console.log(fs.readFileSync('temp.txt', 'utf8'));
+  // prints Node.js
+
+// get the file descriptor of the file to be truncated
+const fd = fs.openSync('temp.txt', 'r+');
+
+// truncate the file to first four bytes
+fs.ftruncate(fd, 4, (err) => {
+  assert.ifError(err);
+  console.log(fs.readFileSync('temp.txt', 'utf8'));
+});
+  // prints Node
+```
+
+If the file previously was shorter than `len` bytes, it is extended, and the
+extended part is filled with null bytes ('\0'). For example,
+
+```js
+console.log(fs.readFileSync('temp.txt', 'utf-8'));
+  // prints Node.js
+
+// get the file descriptor of the file to be truncated
+const fd = fs.openSync('temp.txt', 'r+');
+
+// truncate the file to 10 bytes, whereas the actual size is 7 bytes
+fs.ftruncate(fd, 10, (err) => {
+  assert.ifError(!err);
+  console.log(fs.readFileSync('temp.txt'));
+});
+  // prints <Buffer 4e 6f 64 65 2e 6a 73 00 00 00>
+  // ('Node.js\0\0\0' in UTF8)
+```
+
+The last three bytes are null bytes ('\0'), to compensate the over-truncation.
 
 ## fs.ftruncateSync(fd, len)
 <!-- YAML
@@ -737,7 +951,7 @@ added: v0.8.6
 -->
 
 * `fd` {Integer}
-* `len` {Integer}
+* `len` {Integer} default = `0`
 
 Synchronous ftruncate(2). Returns `undefined`.
 
@@ -879,10 +1093,15 @@ added: v0.1.21
 
 Synchronous mkdir(2). Returns `undefined`.
 
-## fs.mkdtemp(prefix, callback)
+## fs.mkdtemp(prefix[, options], callback)
 <!-- YAML
 added: v5.10.0
 -->
+
+* `prefix` {String}
+* `options` {String | Object}
+  * `encoding` {String} default = `'utf8'`
+* `callback` {Function}
 
 Creates a unique temporary directory.
 
@@ -892,10 +1111,14 @@ Generates six random characters to be appended behind a required
 The created folder path is passed as a string to the callback's second
 parameter.
 
+The optional `options` argument can be a string specifying an encoding, or an
+object with an `encoding` property specifying the character encoding to use.
+
 Example:
 
 ```js
 fs.mkdtemp('/tmp/foo-', (err, folder) => {
+  if (err) throw err;
   console.log(folder);
     // Prints: /tmp/foo-itXde2
 });
@@ -932,13 +1155,20 @@ fs.mkdtemp(tmpDir + path.sep, (err, folder) => {
 });
 ```
 
-## fs.mkdtempSync(prefix)
+## fs.mkdtempSync(prefix[, options])
 <!-- YAML
 added: v5.10.0
 -->
 
+* `prefix` {String}
+* `options` {String | Object}
+  * `encoding` {String} default = `'utf8'`
+
 The synchronous version of [`fs.mkdtemp()`][]. Returns the created
 folder path.
+
+The optional `options` argument can be a string specifying an encoding, or an
+object with an `encoding` property specifying the character encoding to use.
 
 ## fs.open(path, flags[, mode], callback)
 <!-- YAML
@@ -1016,12 +1246,12 @@ will be returned._
 // OS X and Linux
 fs.open('<directory>', 'a+', (err, fd) => {
   // => [Error: EISDIR: illegal operation on a directory, open <directory>]
-})
+});
 
 // Windows and FreeBSD
 fs.open('<directory>', 'a+', (err, fd) => {
   // => null, <fd>
-})
+});
 ```
 
 ## fs.openSync(path, flags[, mode])
@@ -1130,7 +1360,8 @@ fs.readFile('/etc/passwd', 'utf8', callback);
 
 Any specified file descriptor has to support reading.
 
-_Note: Specified file descriptors will not be closed automatically._
+_Note: If a file descriptor is specified as the `file`, it will not be closed
+automatically._
 
 ## fs.readFileSync(file[, options])
 <!-- YAML
@@ -1207,6 +1438,8 @@ added: v0.1.31
 Asynchronous realpath(3). The `callback` gets two arguments `(err,
 resolvedPath)`. May use `process.cwd` to resolve relative paths.
 
+Only paths that can be converted to UTF8 strings are supported. 
+
 The optional `options` argument can be a string specifying an encoding, or an
 object with an `encoding` property specifying the character encoding to use for
 the path passed to the callback. If the `encoding` is set to `'buffer'`,
@@ -1223,10 +1456,12 @@ added: v0.1.31
 
 Synchronous realpath(3). Returns the resolved path.
 
+Only paths that can be converted to UTF8 strings are supported.
+
 The optional `options` argument can be a string specifying an encoding, or an
 object with an `encoding` property specifying the character encoding to use for
-the path passed to the callback. If the `encoding` is set to `'buffer'`,
-the path returned will be passed as a `Buffer` object.
+the returned value. If the `encoding` is set to `'buffer'`, the path returned
+will be passed as a `Buffer` object.
 
 ## fs.rename(oldPath, newPath, callback)
 <!-- YAML
@@ -1333,7 +1568,7 @@ added: v0.8.6
 -->
 
 * `path` {String | Buffer}
-* `len` {Integer}
+* `len` {Integer} default = `0`
 * `callback` {Function}
 
 Asynchronous truncate(2). No arguments other than a possible exception are
@@ -1346,9 +1581,10 @@ added: v0.8.6
 -->
 
 * `path` {String | Buffer}
-* `len` {Integer}
+* `len` {Integer} default = `0`
 
-Synchronous truncate(2). Returns `undefined`.
+Synchronous truncate(2). Returns `undefined`. A file descriptor can also be
+passed as the first argument. In this case, `fs.ftruncateSync()` is called.
 
 ## fs.unlink(path, callback)
 <!-- YAML
@@ -1443,9 +1679,12 @@ directory.  The returned object is a [`fs.FSWatcher`][].
 The second argument is optional. If `options` is provided as a string, it
 specifies the `encoding`. Otherwise `options` should be passed as an object.
 
-The listener callback gets two arguments `(event, filename)`.  `event` is either
+The listener callback gets two arguments `(eventType, filename)`.  `eventType` is either
 `'rename'` or `'change'`, and `filename` is the name of the file which triggered
 the event.
+
+Please note the listener callback is attached to the `'change'` event
+fired by [`fs.FSWatcher`][], but they are not the same thing.
 
 ### Caveats
 
@@ -1499,8 +1738,8 @@ be provided. Therefore, don't assume that `filename` argument is always
 provided in the callback, and have some fallback logic if it is null.
 
 ```js
-fs.watch('somedir', (event, filename) => {
-  console.log(`event is: ${event}`);
+fs.watch('somedir', (eventType, filename) => {
+  console.log(`event type is: ${eventType}`);
   if (filename) {
     console.log(`filename provided: ${filename}`);
   } else {
@@ -1662,7 +1901,8 @@ Note that it is unsafe to use `fs.writeFile` multiple times on the same file
 without waiting for the callback. For this scenario,
 `fs.createWriteStream` is strongly recommended.
 
-_Note: Specified file descriptors will not be closed automatically._
+_Note: If a file descriptor is specified as the `file`, it will not be closed
+automatically._
 
 ## fs.writeFileSync(file, data[, options])
 <!-- YAML

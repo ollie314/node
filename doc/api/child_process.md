@@ -1,6 +1,6 @@
 # Child Process
 
-    Stability: 2 - Stable
+> Stability: 2 - Stable
 
 The `child_process` module provides the ability to spawn child processes in
 a manner that is similar, but not identical, to popen(3). This capability
@@ -82,7 +82,8 @@ be launched using [`child_process.execFile()`][]. When running on Windows, `.bat
 and `.cmd` files can be invoked using [`child_process.spawn()`][] with the `shell`
 option set, with [`child_process.exec()`][], or by spawning `cmd.exe` and passing
 the `.bat` or `.cmd` file as an argument (which is what the `shell` option and
-[`child_process.exec()`][] do).
+[`child_process.exec()`][] do). In any case, if the script filename contains
+spaces it needs to be quoted.
 
 ```js
 // On Windows Only ...
@@ -110,6 +111,13 @@ exec('my.bat', (err, stdout, stderr) => {
   }
   console.log(stdout);
 });
+
+// Script with spaces in the filename:
+const bat = spawn('"my script.cmd"', ['a', 'b'], { shell:true });
+// or:
+exec('"my script.cmd" a b', (err, stdout, stderr) => {
+  // ...
+});
 ```
 
 ### child_process.exec(command[, options][, callback])
@@ -124,7 +132,7 @@ added: v0.1.90
   * `encoding` {String} (Default: `'utf8'`)
   * `shell` {String} Shell to execute the command with
     (Default: `'/bin/sh'` on UNIX, `'cmd.exe'` on Windows, The shell should
-     understand the `-c` switch on UNIX or `/s /c` on Windows. On Windows,
+     understand the `-c` switch on UNIX or `/d /s /c` on Windows. On Windows,
      command line parsing should be compatible with `cmd.exe`.)
   * `timeout` {Number} (Default: `0`)
   * [`maxBuffer`][] {Number} largest amount of data (in bytes) allowed on
@@ -164,8 +172,8 @@ The `stdout` and `stderr` arguments passed to the callback will contain the
 stdout and stderr output of the child process. By default, Node.js will decode
 the output as UTF-8 and pass strings to the callback. The `encoding` option
 can be used to specify the character encoding used to decode the stdout and
-stderr output. If `encoding` is `'buffer'`, `Buffer` objects will be passed to
-the callback instead.
+stderr output. If `encoding` is `'buffer'`, or an unrecognized character
+encoding, `Buffer` objects will be passed to the callback instead.
 
 The `options` argument may be passed as the second argument to customize how
 the process is spawned. The default options are:
@@ -233,8 +241,8 @@ The `stdout` and `stderr` arguments passed to the callback will contain the
 stdout and stderr output of the child process. By default, Node.js will decode
 the output as UTF-8 and pass strings to the callback. The `encoding` option
 can be used to specify the character encoding used to decode the stdout and
-stderr output. If `encoding` is `'buffer'`, `Buffer` objects will be passed to
-the callback instead.
+stderr output. If `encoding` is `'buffer'`, or an unrecognized character
+encoding, `Buffer` objects will be passed to the callback instead.
 
 ### child_process.fork(modulePath[, args][, options])
 <!-- YAML
@@ -253,6 +261,10 @@ added: v0.5.0
     piped to the parent, otherwise they will be inherited from the parent, see
     the `'pipe'` and `'inherit'` options for [`child_process.spawn()`][]'s
     [`stdio`][] for more details (Default: `false`)
+  * `stdio` {Array} Supports the array version of [`child_process.spawn()`][]'s
+    [`stdio`][] option. When this option is provided, it overrides `silent`.
+    The array must contain exactly one item with value `'ipc'` or an error will
+    be thrown. For instance `[0, 1, 2, 'ipc']`.
   * `uid` {Number} Sets the user identity of the process. (See setuid(2).)
   * `gid` {Number} Sets the group identity of the process. (See setgid(2).)
 * Return: {ChildProcess}
@@ -293,6 +305,8 @@ added: v0.1.90
 * `options` {Object}
   * `cwd` {String} Current working directory of the child process
   * `env` {Object} Environment key-value pairs
+  * `argv0` {String} Explicitly set the value of `argv[0]` sent to the child
+    process. This will be set to `command` if not specified.
   * `stdio` {Array|String} Child's stdio configuration. (See
     [`options.stdio`][`stdio`])
   * `detached` {Boolean} Prepare child to run independently of its parent
@@ -303,7 +317,7 @@ added: v0.1.90
   * `shell` {Boolean|String} If `true`, runs `command` inside of a shell. Uses
     `'/bin/sh'` on UNIX, and `'cmd.exe'` on Windows. A different shell can be
     specified as a string. The shell should understand the `-c` switch on UNIX,
-    or `/s /c` on Windows. Defaults to `false` (no shell).
+    or `/d /s /c` on Windows. Defaults to `false` (no shell).
 * return: {ChildProcess}
 
 The `child_process.spawn()` method spawns a new process using the given
@@ -395,6 +409,14 @@ child.on('error', (err) => {
 });
 ```
 
+*Note: Certain platforms (OS X, Linux) will use the value of `argv[0]` for the
+process title while others (Windows, SunOS) will use `command`.*
+
+*Note: Node.js currently overwrites `argv[0]` with `process.execPath` on
+startup, so `process.argv[0]` in a Node.js child process will not match the
+`argv0` parameter passed to `spawn` from the parent, retrieve it with the
+`process.argv0` property instead.*
+
 #### options.detached
 <!-- YAML
 added: v0.7.10
@@ -430,7 +452,7 @@ const spawn = require('child_process').spawn;
 
 const child = spawn(process.argv[0], ['child_program.js'], {
   detached: true,
-  stdio: ['ignore']
+  stdio: 'ignore'
 });
 
 child.unref();
@@ -597,7 +619,7 @@ added: v0.11.12
   * `env` {Object} Environment key-value pairs
   * `shell` {String} Shell to execute the command with
     (Default: `'/bin/sh'` on UNIX, `'cmd.exe'` on Windows, The shell should
-     understand the `-c` switch on UNIX or `/s /c` on Windows. On Windows,
+     understand the `-c` switch on UNIX or `/d /s /c` on Windows. On Windows,
      command line parsing should be compatible with `cmd.exe`.)
   * `uid` {Number} Sets the user identity of the process. (See setuid(2).)
   * `gid` {Number} Sets the group identity of the process. (See setgid(2).)
@@ -650,7 +672,7 @@ added: v0.11.12
   * `shell` {Boolean|String} If `true`, runs `command` inside of a shell. Uses
     `'/bin/sh'` on UNIX, and `'cmd.exe'` on Windows. A different shell can be
     specified as a string. The shell should understand the `-c` switch on UNIX,
-    or `/s /c` on Windows. Defaults to `false` (no shell).
+    or `/d /s /c` on Windows. Defaults to `false` (no shell).
 * return: {Object}
   * `pid` {Number} Pid of the child process
   * `output` {Array} Array of results from stdio output
@@ -830,7 +852,7 @@ const spawn = require('child_process').spawn;
 
 let child = spawn('sh', ['-c',
   `node -e "setInterval(() => {
-      console.log(process.pid + 'is alive')
+      console.log(process.pid, 'is alive')
     }, 500);"`
   ], {
     stdio: ['inherit', 'inherit', 'inherit']

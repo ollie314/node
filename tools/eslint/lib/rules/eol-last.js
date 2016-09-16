@@ -25,7 +25,7 @@ module.exports = {
         ]
     },
 
-    create: function(context) {
+    create(context) {
 
         //--------------------------------------------------------------------------
         // Public
@@ -35,8 +35,8 @@ module.exports = {
 
             Program: function checkBadEOF(node) {
 
-                // Get the whole source code, not for node only.
-                var src = context.getSource(),
+                const sourceCode = context.getSourceCode(),
+                    src = sourceCode.getText(),
                     location = {column: 1},
                     linebreakStyle = context.options[0] || "unix",
                     linebreak = linebreakStyle === "unix" ? "\n" : "\r\n";
@@ -46,10 +46,10 @@ module.exports = {
                     // file is not newline-terminated
                     location.line = src.split(/\n/g).length;
                     context.report({
-                        node: node,
+                        node,
                         loc: location,
                         message: "Newline required at end of file but not found.",
-                        fix: function(fixer) {
+                        fix(fixer) {
                             return fixer.insertTextAfterRange([0, src.length], linebreak);
                         }
                     });

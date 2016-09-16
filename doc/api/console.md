@@ -1,6 +1,6 @@
 # Console
 
-    Stability: 2 - Stable
+> Stability: 2 - Stable
 
 The `console` module provides a simple debugging console that is similar to the
 JavaScript console mechanism provided by web browsers.
@@ -100,7 +100,7 @@ The global `console` is a special `Console` whose output is sent to
 new Console(process.stdout, process.stderr);
 ```
 
-### console.assert(value[, message][, ...])
+### console.assert(value[, message][, ...args])
 <!-- YAML
 added: v0.1.101
 -->
@@ -177,7 +177,7 @@ Defaults to `2`. To make it recurse indefinitely, pass `null`.
 Defaults to `false`. Colors are customizable; see
 [customizing `util.inspect()` colors][].
 
-### console.error([data][, ...])
+### console.error([data][, ...args])
 <!-- YAML
 added: v0.1.100
 -->
@@ -199,14 +199,14 @@ If formatting elements (e.g. `%d`) are not found in the first string then
 [`util.inspect()`][] is called on each argument and the resulting string
 values are concatenated. See [`util.format()`][] for more information.
 
-### console.info([data][, ...])
+### console.info([data][, ...args])
 <!-- YAML
 added: v0.1.100
 -->
 
 The `console.info()` function is an alias for [`console.log()`][].
 
-### console.log([data][, ...])
+### console.log([data][, ...args])
 <!-- YAML
 added: v0.1.100
 -->
@@ -220,7 +220,7 @@ values similar to `printf(3)` (the arguments are all passed to
 var count = 5;
 console.log('count: %d', count);
   // Prints: count: 5, to stdout
-console.log('count: ', count);
+console.log('count:', count);
   // Prints: count: 5, to stdout
 ```
 
@@ -260,7 +260,7 @@ leaking it. On older versions, the timer persisted. This allowed
 `console.timeEnd()` to be called multiple times for the same label. This
 functionality was unintended and is no longer supported.*
 
-### console.trace(message[, ...])
+### console.trace(message[, ...args])
 <!-- YAML
 added: v0.1.104
 -->
@@ -284,20 +284,20 @@ console.trace('Show me');
   //    at REPLServer.Interface._ttyWrite (readline.js:826:14)
 ```
 
-### console.warn([data][, ...])
+### console.warn([data][, ...args])
 <!-- YAML
 added: v0.1.100
 -->
 
 The `console.warn()` function is an alias for [`console.error()`][].
 
-[`console.error()`]: #console_console_error_data
-[`console.log()`]: #console_console_log_data
+[`console.error()`]: #console_console_error_data_args
+[`console.log()`]: #console_console_log_data_args
 [`console.time()`]: #console_console_time_label
 [`console.timeEnd()`]: #console_console_timeend_label
 [`process.stderr`]: process.html#process_process_stderr
 [`process.stdout`]: process.html#process_process_stdout
-[`util.format()`]: util.html#util_util_format_format
+[`util.format()`]: util.html#util_util_format_format_args
 [`util.inspect()`]: util.html#util_util_inspect_object_options
 [customizing `util.inspect()` colors]: util.html#util_customizing_util_inspect_colors
 [web-api-assert]: https://developer.mozilla.org/en-US/docs/Web/API/console/assert

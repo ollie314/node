@@ -6,6 +6,7 @@
 </tr>
 <tr>
 <td valign="top">
+<a href="#0.10.45">0.10.46</a><br/>
 <a href="#0.10.45">0.10.45</a><br/>
 <a href="#0.10.44">0.10.44</a><br/>
 <a href="#0.10.43">0.10.43</a><br/>
@@ -69,6 +70,21 @@
 **Note:** Node.js v0.10 is covered by the 
 [Node.js Long Term Support Plan](https://github.com/nodejs/LTS) and
 will be maintained until October 2016.
+
+<a id="0.10.46"></a>
+## 2016-06-23, Version 0.10.46 (Maintenance), @rvagg
+
+### Notable changes:
+
+This is a security release. All Node.js users should consult the security release summary at https://nodejs.org/en/blog/vulnerability/june-2016-security-releases/ for details on patched vulnerabilities.
+
+* libuv: (CVE-2014-9748) Fixes a bug in the read/write locks implementation for Windows XP and Windows 2003 that can lead to undefined and potentially unsafe behaviour. More information can be found at https://github.com/libuv/libuv/issues/515 or at https://nodejs.org/en/blog/vulnerability/june-2016-security-releases/.
+* V8: (CVE-2016-1669) Fixes a potential Buffer overflow vulnerability discovered in V8, more details can be found in the CVE at https://www.cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-1669 or at https://nodejs.org/en/blog/vulnerability/june-2016-security-releases/.
+
+### Commits:
+
+* [3374f57973] - deps: update libuv to 0.10.37 (Saúl Ibarra Corretgé) https://github.com/nodejs/node/pull/7293
+* [fcb9145e29] - deps: backport 3a9bfec from v8 upstream (Myles Borins) https://github.com/nodejs/node-private/pull/43
 
 <a id="0.10.45"></a>
 ## 2016-05-06, Version 0.10.45 (Maintenance), @rvagg
@@ -293,14 +309,16 @@ https://github.com/nodejs/node/commit/8d045a30e95602b443eb259a5021d33feb4df079
 * uv: Update to v0.10.29
 * child_process: properly support optional args (cjihrig)
 * crypto: Disable autonegotiation for SSLv2/3 by default (Fedor Indutny,
-	Timothy J Fontaine, Alexis Campailla)
-	This is a behavior change, by default we will not allow the negotiation to
-	SSLv2 or SSLv3. If you want this behavior, run Node.js with either
-	`--enable-ssl2` or `--enable-ssl3` respectively.
-	This does not change the behavior for users specifically requesting
-	`SSLv2_method` or `SSLv3_method`. While this behavior is not advised, it is
-	assumed you know what you're doing since you're specifically asking to use
-	these methods.
+  Timothy J Fontaine, Alexis Campailla)
+ 
+  This is a behavior change, by default we will not allow the negotiation to
+  SSLv2 or SSLv3. If you want this behavior, run Node.js with either
+  `--enable-ssl2` or `--enable-ssl3` respectively.
+ 
+  This does not change the behavior for users specifically requesting
+  `SSLv2_method` or `SSLv3_method`. While this behavior is not advised, it is
+  assumed you know what you're doing since you're specifically asking to use
+  these methods.
 
 <a id="0.10.32"></a>
 ## 2014.09.16, Version 0.10.32 (Stable)

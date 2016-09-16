@@ -3,7 +3,7 @@
 
 require('../common');
 const assert = require('assert');
-const zlib = require ('zlib');
+const zlib = require('zlib');
 
 const inputString = 'ΩΩLorem ipsum dolor sit amet, consectetur adipiscing eli' +
                     't. Morbi faucibus, purus at gravida dictum, libero arcu ' +
@@ -47,7 +47,7 @@ const inputString = 'ΩΩLorem ipsum dolor sit amet, consectetur adipiscing eli'
       assert(/unexpected end of file/.test(err.message));
     });
 
-    const syncFlushOpt = { finishFlush: zlib.Z_SYNC_FLUSH };
+    const syncFlushOpt = { finishFlush: zlib.constants.Z_SYNC_FLUSH };
 
     // sync truncated input test, finishFlush = Z_SYNC_FLUSH
     assert.doesNotThrow(function() {

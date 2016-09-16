@@ -4,7 +4,7 @@ const common = require('../common');
 const assert = require('assert');
 const dgram = require('dgram');
 
-if (process.platform === 'darwin') {
+if (common.isOSX) {
   common.skip('because of 17894467 Apple bug');
   return;
 }
@@ -23,7 +23,7 @@ client.on('message', common.mustCall(function onMessage(buf, info) {
 }));
 
 client.on('listening', function() {
-  client.send([], common.PORT, common.localhostIPv4);
+  client.send([], this.address().port, common.localhostIPv4);
 });
 
-client.bind(common.PORT);
+client.bind(0);

@@ -49,8 +49,7 @@ inline IsolateData::IsolateData(v8::Isolate* isolate, uv_loop_t* event_loop,
             sizeof(StringValue) - 1).ToLocalChecked()),
     PER_ISOLATE_STRING_PROPERTIES(V)
 #undef V
-    isolate_(isolate), event_loop_(event_loop),
-    zero_fill_field_(zero_fill_field) {}
+    event_loop_(event_loop), zero_fill_field_(zero_fill_field) {}
 
 inline uv_loop_t* IsolateData::event_loop() const {
   return event_loop_;
@@ -349,7 +348,7 @@ inline ares_channel* Environment::cares_channel_ptr() {
   return &cares_channel_;
 }
 
-inline ares_task_list* Environment::cares_task_list() {
+inline node_ares_task_list* Environment::cares_task_list() {
   return &cares_task_list_;
 }
 
@@ -357,39 +356,23 @@ inline IsolateData* Environment::isolate_data() const {
   return isolate_data_;
 }
 
-// this would have been a template function were it not for the fact that g++
-// sometimes fails to resolve it...
-#define THROW_ERROR(fun)                                                      \
-  do {                                                                        \
-    v8::HandleScope scope(isolate);                                           \
-    isolate->ThrowException(fun(OneByteString(isolate, errmsg)));             \
-  }                                                                           \
-  while (0)
-
-inline void Environment::ThrowError(v8::Isolate* isolate, const char* errmsg) {
-  THROW_ERROR(v8::Exception::Error);
-}
-
-inline void Environment::ThrowTypeError(v8::Isolate* isolate,
-                                        const char* errmsg) {
-  THROW_ERROR(v8::Exception::TypeError);
-}
-
-inline void Environment::ThrowRangeError(v8::Isolate* isolate,
-                                         const char* errmsg) {
-  THROW_ERROR(v8::Exception::RangeError);
-}
-
 inline void Environment::ThrowError(const char* errmsg) {
-  ThrowError(isolate(), errmsg);
+  ThrowError(v8::Exception::Error, errmsg);
 }
 
 inline void Environment::ThrowTypeError(const char* errmsg) {
-  ThrowTypeError(isolate(), errmsg);
+  ThrowError(v8::Exception::TypeError, errmsg);
 }
 
 inline void Environment::ThrowRangeError(const char* errmsg) {
-  ThrowRangeError(isolate(), errmsg);
+  ThrowError(v8::Exception::RangeError, errmsg);
+}
+
+inline void Environment::ThrowError(
+    v8::Local<v8::Value> (*fun)(v8::Local<v8::String>),
+    const char* errmsg) {
+  v8::HandleScope handle_scope(isolate());
+  isolate()->ThrowException(fun(OneByteString(isolate(), errmsg)));
 }
 
 inline void Environment::ThrowErrnoException(int errorno,

@@ -1,6 +1,6 @@
 ## Building Node.js
 
-Depending on what platform or features you require the build process may
+Depending on what platform or features you require, the build process may
 differ slightly. After you've successfully built a binary, running the
 test suite to validate that the binary works as intended is a good next step.
 
@@ -25,35 +25,28 @@ On OS X, you will also need:
   * This step will install `gcc` and the related toolchain containing `make`
 
 On FreeBSD and OpenBSD, you may also need:
-* libexecinfo (FreeBSD and OpenBSD only)
+* libexecinfo
 
+To build Node.js:
 
-```text
+```console
 $ ./configure
 $ make
-$ [sudo] make install
 ```
 
 If your Python binary is in a non-standard location or has a
 non-standard name, run the following instead:
 
-```text
+```console
 $ export PYTHON=/path/to/python
 $ $PYTHON ./configure
 $ make
-$ [sudo] make install
 ```
 
 To run the tests:
 
-```text
+```console
 $ make test
-```
-
-To run the native module tests:
-
-```text
-$ make test-addons
 ```
 
 To run the npm test suite:
@@ -61,7 +54,7 @@ To run the npm test suite:
 *note: to run the suite on node v4 or earlier you must first*
 *run `make install`*
 
-```
+```console
 $ make test-npm
 ```
 
@@ -69,28 +62,32 @@ To build the documentation:
 
 This will build Node.js first (if necessary) and then use it to build the docs:
 
-```text
+```console
 $ make doc
 ```
 
 If you have an existing Node.js you can build just the docs with:
 
-```text
-$ NODE=node make doc-only
+```console
+$ NODE=/path/to/node make doc-only
 ```
-
-(Where `node` is the path to your executable.)
 
 To read the documentation:
 
-```text
+```console
 $ man doc/node.1
 ```
 
 To test if Node.js was built correctly:
 
+```console
+$ ./node -e "console.log('Hello from Node.js ' + process.version)"
 ```
-$ node -e "console.log('Hello from Node.js ' + process.version)"
+
+To install this version of Node.js into a system directory:
+
+```console
+$ [sudo] make install
 ```
 
 
@@ -99,26 +96,28 @@ $ node -e "console.log('Hello from Node.js ' + process.version)"
 Prerequisites:
 
 * [Python 2.6 or 2.7](https://www.python.org/downloads/)
-* Visual Studio 2013 / 2015, all editions including the Community edition, or
-* Visual Studio Express 2013 / 2015 for Desktop
+* One of:
+  * [Visual C++ Build Tools](http://landinghub.visualstudio.com/visual-cpp-build-tools)
+  * [Visual Studio 2015 Update 3](https://www.visualstudio.com/), all editions
+    including the Community edition.
 * Basic Unix tools required for some tests,
   [Git for Windows](http://git-scm.com/download/win) includes Git Bash
   and tools which can be included in the global `PATH`.
 
-```text
+```console
 > vcbuild nosign
 ```
 
 To run the tests:
 
-```text
+```console
 > vcbuild test
 ```
 
 To test if Node.js was built correctly:
 
-```
-$ node -e "console.log('Hello from Node.js ' + process.version)"
+```console
+> Release\node -e "console.log('Hello from Node.js', process.version)"
 ```
 
 ### Android / Android-based devices (e.g., Firefox OS)
@@ -134,7 +133,7 @@ Be sure you have downloaded and extracted [Android NDK]
 (https://developer.android.com/tools/sdk/ndk/index.html)
 before in a folder. Then run:
 
-```
+```console
 $ ./android-configure /path/to/your/android-ndk
 $ make
 ```
@@ -163,13 +162,13 @@ Node.js source does not include all locales.)
 
 ##### Unix / OS X:
 
-```text
+```console
 $ ./configure --with-intl=full-icu --download=all
 ```
 
 ##### Windows:
 
-```text
+```console
 > vcbuild full-icu download-all
 ```
 
@@ -180,19 +179,19 @@ The `Intl` object will not be available, nor some other APIs such as
 
 ##### Unix / OS X:
 
-```text
+```console
 $ ./configure --without-intl
 ```
 
 ##### Windows:
 
-```text
+```console
 > vcbuild without-intl
 ```
 
 #### Use existing installed ICU (Unix / OS X only):
 
-```text
+```console
 $ pkg-config --modversion icu-i18n && ./configure --with-intl=system-icu
 ```
 
@@ -208,14 +207,18 @@ Download the file named something like `icu4c-**##.#**-src.tgz` (or
 
 ##### Unix / OS X
 
-```text
-# from an already-unpacked ICU:
+From an already-unpacked ICU:
+```console
 $ ./configure --with-intl=[small-icu,full-icu] --with-icu-source=/path/to/icu
+```
 
-# from a local ICU tarball
+From a local ICU tarball:
+```console
 $ ./configure --with-intl=[small-icu,full-icu] --with-icu-source=/path/to/icu.tgz
+```
 
-# from a tarball URL
+From a tarball URL:
+```console
 $ ./configure --with-intl=full-icu --with-icu-source=http://url/to/icu.tgz
 ```
 
@@ -225,7 +228,7 @@ First unpack latest ICU to `deps/icu`
 [icu4c-**##.#**-src.tgz](http://icu-project.org/download) (or `.zip`)
 as `deps/icu` (You'll have: `deps/icu/source/...`)
 
-```text
+```console
 > vcbuild full-icu
 ```
 

@@ -1,6 +1,6 @@
 # Modules
 
-    Stability: 3 - Locked
+> Stability: 3 - Locked
 
 <!--name=module-->
 
@@ -12,7 +12,7 @@ The contents of `foo.js`:
 
 ```js
 const circle = require('./circle.js');
-console.log( `The area of a circle of radius 4 is ${circle.area(4)}`);
+console.log(`The area of a circle of radius 4 is ${circle.area(4)}`);
 ```
 
 The contents of `circle.js`:
@@ -143,7 +143,7 @@ the `require.resolve()` function.
 Putting together all of the above, here is the high-level algorithm
 in pseudocode of what require.resolve does:
 
-```
+```txt
 require(X) from module at path Y
 1. If X is a core module,
    a. return the core module
@@ -244,7 +244,7 @@ Consider this situation:
 
 `a.js`:
 
-```
+```js
 console.log('a starting');
 exports.done = false;
 const b = require('./b.js');
@@ -255,7 +255,7 @@ console.log('a done');
 
 `b.js`:
 
-```
+```js
 console.log('b starting');
 exports.done = false;
 const a = require('./a.js');
@@ -266,7 +266,7 @@ console.log('b done');
 
 `main.js`:
 
-```
+```js
 console.log('main starting');
 const a = require('./a.js');
 const b = require('./b.js');
@@ -282,7 +282,7 @@ provided to the `a.js` module.
 By the time `main.js` has loaded both modules, they're both finished.
 The output of this program would thus be:
 
-```
+```txt
 $ node main.js
 main starting
 a starting
@@ -336,7 +336,7 @@ The first is to create a `package.json` file in the root of the folder,
 which specifies a `main` module.  An example package.json file might
 look like this:
 
-```
+```json
 { "name" : "some-library",
   "main" : "./lib/some-library.js" }
 ```
@@ -351,7 +351,7 @@ Note: If the file specified by the `"main"` entry of `package.json` is missing
 and can not be resolved, Node.js will report the entire module as missing with
 the default error:
 
-```
+```txt
 Error: Cannot find module 'some-library'
 ```
 
@@ -451,6 +451,9 @@ to the module, such as:
   module's absolute filename and directory path.
 
 ## The `module` Object
+<!-- YAML
+added: v0.1.16
+-->
 
 <!-- type=var -->
 <!-- name=module -->
@@ -463,12 +466,18 @@ also accessible via the `exports` module-global. `module` isn't actually
 a global but rather local to each module.
 
 ### module.children
+<!-- YAML
+added: v0.1.16
+-->
 
 * {Array}
 
 The module objects required by this one.
 
 ### module.exports
+<!-- YAML
+added: v0.1.16
+-->
 
 * {Object}
 
@@ -521,6 +530,9 @@ console.log(x.a);
 ```
 
 #### exports alias
+<!-- YAML
+added: v0.1.16
+-->
 
 The `exports` variable that is available within a module starts as a reference
 to `module.exports`. As with any variable, if you assign a new value to it, it
@@ -546,12 +558,18 @@ As a guideline, if the relationship between `exports` and `module.exports`
 seems like magic to you, ignore `exports` and only use `module.exports`.
 
 ### module.filename
+<!-- YAML
+added: v0.1.16
+-->
 
 * {String}
 
 The fully resolved filename to the module.
 
 ### module.id
+<!-- YAML
+added: v0.1.16
+-->
 
 * {String}
 
@@ -559,6 +577,9 @@ The identifier for the module.  Typically this is the fully resolved
 filename.
 
 ### module.loaded
+<!-- YAML
+added: v0.1.16
+-->
 
 * {Boolean}
 
@@ -566,12 +587,18 @@ Whether or not the module is done loading, or is in the process of
 loading.
 
 ### module.parent
+<!-- YAML
+added: v0.1.16
+-->
 
 * {Object} Module object
 
 The module that first required this one.
 
 ### module.require(id)
+<!-- YAML
+added: v0.5.1
+-->
 
 * `id` {String}
 * Return: {Object} `module.exports` from the resolved module
