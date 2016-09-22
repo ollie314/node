@@ -193,6 +193,8 @@ more information about the governance of the Node.js project, see
 
 ### Collaborators
 
+* [ak239](https://github.com/ak239) -
+**Aleksei Koziatinskii** &lt;ak239spb@gmail.com&gt;
 * [andrasq](https://github.com/andrasq) -
 **Andras** &lt;andras@kinvey.com&gt;
 * [AndreasMadsen](https://github.com/AndreasMadsen) -
@@ -219,6 +221,8 @@ more information about the governance of the Node.js project, see
 **Robert Jefe Lindstaedt** &lt;robert.lindstaedt@gmail.com&gt;
 * [estliberitas](https://github.com/estliberitas) -
 **Alexander Makarenko** &lt;estliberitas@gmail.com&gt;
+* [eugeneo](https://github.com/eugeneo) -
+**Eugene Ostroukhov** &lt;eostroukhov@google.com&gt;
 * [fhinkel](https://github.com/fhinkel) -
 **Franziska Hinkelmann** &lt;franziska.hinkelmann@gmail.com&gt;
 * [firedfox](https://github.com/firedfox) -
