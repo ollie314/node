@@ -26,7 +26,8 @@ release.
 </tr>
 <tr>
   <td valign="top">
-<b><a href="doc/changelogs/CHANGELOG_V6.md#6.8.1">6.8.1</a></b><br/>
+<b><a href="doc/changelogs/CHANGELOG_V6.md#6.9.0">6.9.0</a></b><br/>
+<a href="doc/changelogs/CHANGELOG_V6.md#6.8.1">6.8.1</a><br/>
 <a href="doc/changelogs/CHANGELOG_V6.md#6.8.0">6.8.0</a><br/>
 <a href="doc/changelogs/CHANGELOG_V6.md#6.7.0">6.7.0</a><br/>
 <a href="doc/changelogs/CHANGELOG_V6.md#6.6.0">6.6.0</a><br/>
@@ -61,7 +62,8 @@ release.
 <a href="doc/changelogs/CHANGELOG_V5.md#5.0.0">5.0.0</a><br/>
   </td>
   <td valign="top">
-<b><a href="doc/changelogs/CHANGELOG_V4.md#4.6.0">4.6.0</a></b><br/>
+<b><a href="doc/changelogs/CHANGELOG_V4.md#4.6.1">4.6.1</a></b><br/>
+<a href="doc/changelogs/CHANGELOG_V4.md#4.6.0">4.6.0</a><br/>
 <a href="doc/changelogs/CHANGELOG_V4.md#4.5.0">4.5.0</a><br/>
 <a href="doc/changelogs/CHANGELOG_V4.md#4.4.7">4.4.7</a></b>
 <a href="doc/changelogs/CHANGELOG_V4.md#4.4.6">4.4.6</a></b>
@@ -87,7 +89,8 @@ release.
 <a href="doc/changelogs/CHANGELOG_V4.md#4.0.0">4.0.0</a><br/>
   </td>
   <td valign="top">
-<b><a href="doc/changelogs/CHANGELOG_V012.md#0.12.16">0.12.16</a></b><br/>
+<b><a href="doc/changelogs/CHANGELOG_V012.md#0.12.17">0.12.17</a></b><br/>
+<a href="doc/changelogs/CHANGELOG_V012.md#0.12.16">0.12.16</a><br/>
 <a href="doc/changelogs/CHANGELOG_V012.md#0.12.15">0.12.15</a><br/>
 <a href="doc/changelogs/CHANGELOG_V012.md#0.12.14">0.12.14</a><br/>
 <a href="doc/changelogs/CHANGELOG_V012.md#0.12.13">0.12.13</a><br/>
@@ -106,7 +109,8 @@ release.
 <a href="doc/changelogs/CHANGELOG_V012.md#0.12.0">0.12.0</a><br/>
   </td>
   <td valign="top">
-<b><a href="doc/changelogs/CHANGELOG_V010.md#0.10.47">0.10.47</a></b><br/>
+<b><a href="doc/changelogs/CHANGELOG_V010.md#0.10.48">0.10.48</a></b><br/>
+><a href="doc/changelogs/CHANGELOG_V010.md#0.10.47">0.10.47</a><br/>
 <a href="doc/changelogs/CHANGELOG_V010.md#0.10.46">0.10.46</a><br/>
 <a href="doc/changelogs/CHANGELOG_V010.md#0.10.45">0.10.45</a><br/>
 <a href="doc/changelogs/CHANGELOG_V010.md#0.10.44">0.10.44</a><br/>
