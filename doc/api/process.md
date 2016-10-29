@@ -374,7 +374,7 @@ The `*-deprecation` command line flags only affect warnings that use the name
 <!--name=SIGINT, SIGHUP, etc.-->
 
 Signal events will be emitted when the Node.js process receives a signal. Please
-refer to sigaction(2) for a listing of standard POSIX signal names such as
+refer to signal(7) for a listing of standard POSIX signal names such as
 `SIGINT`, `SIGHUP`, etc.
 
 The name of each event will be the uppercase common name for the signal (e.g.
@@ -706,6 +706,16 @@ process.env.TEST = 1;
 delete process.env.TEST;
 console.log(process.env.TEST);
 // => undefined
+```
+
+On Windows operating systems, environment variables are case-insensitive.
+
+Example:
+
+```js
+process.env.TEST = 1;
+console.log(process.env.test);
+// => 1
 ```
 
 ## process.emitWarning(warning[, name][, ctor])
@@ -1633,8 +1643,10 @@ Will generate output similar to:
   ares: '1.10.0-DEV',
   modules: '43',
   icu: '55.1',
-  openssl: '1.0.1k'
-}
+  openssl: '1.0.1k',
+  unicode: '8.0',
+  cldr: '29.0',
+  tz: '2016b' }
 ```
 
 ## Exit Codes
