@@ -124,7 +124,7 @@ $ node --zero-fill-buffers
 <Buffer 00 00 00 00 00>
 ```
 
-### What makes [`Buffer.allocUnsafe()`] and [`Buffer.allocUnsafeSlow()`] "unsafe"?
+### What makes `Buffer.allocUnsafe()` and `Buffer.allocUnsafeSlow()` "unsafe"?
 
 When calling [`Buffer.allocUnsafe()`] and [`Buffer.allocUnsafeSlow()`], the
 segment of allocated memory is *uninitialized* (it is not zeroed-out). While
@@ -2308,7 +2308,7 @@ On 64-bit architectures, this value is `(2^31)-1` (~2GB).
 
 ## buffer.transcode(source, fromEnc, toEnc)
 <!-- YAML
-added: REPLACEME
+added: v7.1.0
 -->
 
 * `source` {Buffer} A `Buffer` instance
@@ -2421,7 +2421,7 @@ console.log(buf);
 [`Buffer.from(array)`]: #buffer_class_method_buffer_from_array
 [`Buffer.from(arrayBuffer)`]: #buffer_class_method_buffer_from_arraybuffer_byteoffset_length
 [`Buffer.from(buffer)`]: #buffer_class_method_buffer_from_buffer
-[`Buffer.from(string)`]: #buffer_class_method_buffer_from_str_encoding
+[`Buffer.from(string)`]: #buffer_class_method_buffer_from_string_encoding
 [`Buffer.poolSize`]: #buffer_class_property_buffer_poolsize
 [`RangeError`]: errors.html#errors_class_rangeerror
 [`util.inspect()`]: util.html#util_util_inspect_object_options

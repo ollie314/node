@@ -114,6 +114,7 @@ using v8::Locker;
 using v8::MaybeLocal;
 using v8::Message;
 using v8::Name;
+using v8::NamedPropertyHandlerConfiguration;
 using v8::Null;
 using v8::Number;
 using v8::Object;
@@ -2673,7 +2674,7 @@ static void ProcessTitleSetter(Local<Name> property,
 }
 
 
-static void EnvGetter(Local<String> property,
+static void EnvGetter(Local<Name> property,
                       const PropertyCallbackInfo<Value>& info) {
   Isolate* isolate = info.GetIsolate();
 #ifdef __POSIX__
@@ -2683,7 +2684,7 @@ static void EnvGetter(Local<String> property,
     return info.GetReturnValue().Set(String::NewFromUtf8(isolate, val));
   }
 #else  // _WIN32
-  String::Value key(property);
+  node::TwoByteValue key(isolate, property);
   WCHAR buffer[32767];  // The maximum size allowed for environment variables.
   DWORD result = GetEnvironmentVariableW(reinterpret_cast<WCHAR*>(*key),
                                          buffer,
@@ -2701,7 +2702,7 @@ static void EnvGetter(Local<String> property,
 }
 
 
-static void EnvSetter(Local<String> property,
+static void EnvSetter(Local<Name> property,
                       Local<Value> value,
                       const PropertyCallbackInfo<Value>& info) {
 #ifdef __POSIX__
@@ -2709,8 +2710,8 @@ static void EnvSetter(Local<String> property,
   node::Utf8Value val(info.GetIsolate(), value);
   setenv(*key, *val, 1);
 #else  // _WIN32
-  String::Value key(property);
-  String::Value val(value);
+  node::TwoByteValue key(info.GetIsolate(), property);
+  node::TwoByteValue val(info.GetIsolate(), value);
   WCHAR* key_ptr = reinterpret_cast<WCHAR*>(*key);
   // Environment variables that start with '=' are read-only.
   if (key_ptr[0] != L'=') {
@@ -2722,7 +2723,7 @@ static void EnvSetter(Local<String> property,
 }
 
 
-static void EnvQuery(Local<String> property,
+static void EnvQuery(Local<Name> property,
                      const PropertyCallbackInfo<Integer>& info) {
   int32_t rc = -1;  // Not found unless proven otherwise.
 #ifdef __POSIX__
@@ -2730,7 +2731,7 @@ static void EnvQuery(Local<String> property,
   if (getenv(*key))
     rc = 0;
 #else  // _WIN32
-  String::Value key(property);
+  node::TwoByteValue key(info.GetIsolate(), property);
   WCHAR* key_ptr = reinterpret_cast<WCHAR*>(*key);
   if (GetEnvironmentVariableW(key_ptr, nullptr, 0) > 0 ||
       GetLastError() == ERROR_SUCCESS) {
@@ -2748,13 +2749,13 @@ static void EnvQuery(Local<String> property,
 }
 
 
-static void EnvDeleter(Local<String> property,
+static void EnvDeleter(Local<Name> property,
                        const PropertyCallbackInfo<Boolean>& info) {
 #ifdef __POSIX__
   node::Utf8Value key(info.GetIsolate(), property);
   unsetenv(*key);
 #else
-  String::Value key(property);
+  node::TwoByteValue key(info.GetIsolate(), property);
   WCHAR* key_ptr = reinterpret_cast<WCHAR*>(*key);
   SetEnvironmentVariableW(key_ptr, nullptr);
 #endif
@@ -3147,12 +3148,14 @@ void SetupProcessObject(Environment* env,
   // create process.env
   Local<ObjectTemplate> process_env_template =
       ObjectTemplate::New(env->isolate());
-  process_env_template->SetNamedPropertyHandler(EnvGetter,
-                                                EnvSetter,
-                                                EnvQuery,
-                                                EnvDeleter,
-                                                EnvEnumerator,
-                                                env->as_external());
+  process_env_template->SetHandler(NamedPropertyHandlerConfiguration(
+          EnvGetter,
+          EnvSetter,
+          EnvQuery,
+          EnvDeleter,
+          EnvEnumerator,
+          env->as_external()));
+
   Local<Object> process_env =
       process_env_template->NewInstance(env->context()).ToLocalChecked();
   process->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "env"), process_env);
@@ -4185,6 +4188,14 @@ void Init(int* argc,
                             &dispatch_debug_messages_async,
                             DispatchDebugMessagesAsyncCallback));
   uv_unref(reinterpret_cast<uv_handle_t*>(&dispatch_debug_messages_async));
+
+#if defined(NODE_HAVE_I18N_SUPPORT)
+  // Set the ICU casing flag early
+  // so the user can disable a flag --foo at run-time by passing
+  // --no_foo from the command line.
+  const char icu_case_mapping[] = "--icu_case_mapping";
+  V8::SetFlagsFromString(icu_case_mapping, sizeof(icu_case_mapping) - 1);
+#endif
 
 #if defined(NODE_V8_OPTIONS)
   // Should come before the call to V8::SetFlagsFromCommandLine()
