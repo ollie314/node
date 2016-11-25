@@ -194,6 +194,8 @@ When using an authenticated encryption mode (only `GCM` is currently
 supported), the `cipher.setAAD()` method sets the value used for the
 _additional authenticated data_ (AAD) input parameter.
 
+Returns `this` for method chaining.
+
 ### cipher.getAuthTag()
 <!-- YAML
 added: v1.0.0
@@ -221,6 +223,8 @@ Disabling automatic padding is useful for non-standard padding, for instance
 using `0x0` instead of PKCS padding.
 
 The `cipher.setAutoPadding()` method must be called before [`cipher.final()`][].
+
+Returns `this` for method chaining.
 
 ### cipher.update(data[, input_encoding][, output_encoding])
 <!-- YAML
@@ -326,8 +330,10 @@ added: v1.0.0
 -->
 
 When using an authenticated encryption mode (only `GCM` is currently
-supported), the `cipher.setAAD()` method sets the value used for the
+supported), the `decipher.setAAD()` method sets the value used for the
 _additional authenticated data_ (AAD) input parameter.
+
+Returns `this` for method chaining.
 
 ### decipher.setAuthTag(buffer)
 <!-- YAML
@@ -339,6 +345,8 @@ supported), the `decipher.setAuthTag()` method is used to pass in the
 received _authentication tag_. If no tag is provided, or if the cipher text
 has been tampered with, [`decipher.final()`][] with throw, indicating that the
 cipher text should be discarded due to failed authentication.
+
+Returns `this` for method chaining.
 
 ### decipher.setAutoPadding(auto_padding=true)
 <!-- YAML
@@ -354,6 +362,8 @@ multiple of the ciphers block size.
 
 The `decipher.setAutoPadding()` method must be called before
 [`decipher.update()`][].
+
+Returns `this` for method chaining.
 
 ### decipher.update(data[, input_encoding][, output_encoding])
 <!-- YAML
@@ -1451,7 +1461,6 @@ keys:
 * `padding` : An optional padding value, one of the following:
   * `crypto.constants.RSA_NO_PADDING`
   * `crypto.constants.RSA_PKCS1_PADDING`
-  * `crypto.constants.RSA_PKCS1_OAEP_PADDING`
 
 All paddings are defined in `crypto.constants`.
 
@@ -1620,7 +1629,7 @@ See the reference for other recommendations and details.
 
 ## Crypto Constants
 
-The following constants exported by `crypto.constants` apply to various uses of 
+The following constants exported by `crypto.constants` apply to various uses of
 the `crypto`, `tls`, and `https` modules and are generally specific to OpenSSL.
 
 ### OpenSSL Options
@@ -1639,13 +1648,13 @@ the `crypto`, `tls`, and `https` modules and are generally specific to OpenSSL.
   <tr>
     <td><code>SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION</code></td>
     <td>Allows legacy insecure renegotiation between OpenSSL and unpatched
-    clients or servers. See 
+    clients or servers. See
     https://www.openssl.org/docs/man1.0.2/ssl/SSL_CTX_set_options.html.</td>
   </tr>
   <tr>
     <td><code>SSL_OP_CIPHER_SERVER_PREFERENCE</code></td>
     <td>Uses the server's preferences instead of the clients when selecting a
-    cipher. See 
+    cipher. See
     https://www.openssl.org/docs/man1.0.2/ssl/SSL_CTX_set_options.html.</td>
   </tr>
   <tr>
